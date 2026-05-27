@@ -7,28 +7,20 @@ import (
 )
 
 type Config struct {
-	Port      string          `json:"port"`
-	Host      string          `json:"host"`
-	Routing   []Route         `json:"routing"`
-	Blacklist BlacklistConfig `json:"blacklist"`
-	Cooldown  CooldownConfig  `json:"cooldown"`
-	Typo      TypoConfig      `json:"typo"`
-	OSV       OSVConfig       `json:"osv"`
+	Port      string         `json:"port"`
+	Host      string         `json:"host"`
+	DBPath    string         `json:"db_path"`
+	RepoProxy string         `json:"repo_proxy"`
+	Routing   []Route        `json:"routing"`
+	Cooldown  CooldownConfig `json:"cooldown"`
+	Typo      TypoConfig     `json:"typo"`
+	OSV       OSVConfig      `json:"osv"`
 }
 
 type Route struct {
 	Prefix    string `json:"prefix"`
 	Upstream  string `json:"upstream"`
 	Ecosystem string `json:"ecosystem"`
-}
-
-type BlacklistConfig struct {
-	Entries []BlacklistEntry `json:"entries"`
-}
-
-type BlacklistEntry struct {
-	Name    string `json:"name"`
-	Version string `json:"version"`
 }
 
 type CooldownConfig struct {
@@ -91,8 +83,9 @@ func (o *OSVConfig) UnmarshalJSON(data []byte) error {
 
 func Default() *Config {
 	return &Config{
-		Port: "8080",
-		Host: "127.0.0.1",
+		Port:   "8080",
+		Host:   "127.0.0.1",
+		DBPath: "malfuse.db",
 		OSV: OSVConfig{
 			BaseURL: "https://api.osv.dev",
 		},
@@ -123,11 +116,6 @@ func (c *Config) Validate() error {
 		}
 		if r.Ecosystem == "" {
 			return fmt.Errorf("route %d: ecosystem is required", i)
-		}
-	}
-	for i, e := range c.Blacklist.Entries {
-		if e.Name == "" {
-			return fmt.Errorf("blacklist entry %d: name is required", i)
 		}
 	}
 	return nil

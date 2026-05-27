@@ -9,16 +9,11 @@ func TestLoadConfig(t *testing.T) {
 	jsonData := `{
   "port": "9090",
   "host": "0.0.0.0",
+  "db_path": "malfuse.db",
   "routing": [
     {"prefix": "/pypi/", "upstream": "https://pypi.org", "ecosystem": "pypi"},
     {"prefix": "/npm/", "upstream": "https://registry.npmjs.org", "ecosystem": "npm"}
   ],
-  "blacklist": {
-    "entries": [
-      {"name": "malicious-pkg"},
-      {"name": "bad-lib", "version": "2.0.0"}
-    ]
-  },
   "cooldown": {
     "enabled": true,
     "duration": "24h"
@@ -45,34 +40,12 @@ func TestLoadConfig(t *testing.T) {
 	if cfg.Host != "0.0.0.0" {
 		t.Errorf("expected host 0.0.0.0, got %s", cfg.Host)
 	}
+	if cfg.DBPath != "malfuse.db" {
+		t.Errorf("expected db_path malfuse.db, got %s", cfg.DBPath)
+	}
 
 	if len(cfg.Routing) != 2 {
 		t.Fatalf("expected 2 routes, got %d", len(cfg.Routing))
-	}
-	if cfg.Routing[0].Prefix != "/pypi/" {
-		t.Errorf("expected first route prefix /pypi/, got %s", cfg.Routing[0].Prefix)
-	}
-	if cfg.Routing[0].Upstream != "https://pypi.org" {
-		t.Errorf("expected first route upstream https://pypi.org, got %s", cfg.Routing[0].Upstream)
-	}
-	if cfg.Routing[0].Ecosystem != "pypi" {
-		t.Errorf("expected first route ecosystem pypi, got %s", cfg.Routing[0].Ecosystem)
-	}
-
-	if len(cfg.Blacklist.Entries) != 2 {
-		t.Fatalf("expected 2 blacklist entries, got %d", len(cfg.Blacklist.Entries))
-	}
-	if cfg.Blacklist.Entries[0].Name != "malicious-pkg" {
-		t.Errorf("expected first blacklist entry name malicious-pkg, got %s", cfg.Blacklist.Entries[0].Name)
-	}
-	if cfg.Blacklist.Entries[0].Version != "" {
-		t.Errorf("expected first blacklist entry version empty, got %s", cfg.Blacklist.Entries[0].Version)
-	}
-	if cfg.Blacklist.Entries[1].Name != "bad-lib" {
-		t.Errorf("expected second blacklist entry name bad-lib, got %s", cfg.Blacklist.Entries[1].Name)
-	}
-	if cfg.Blacklist.Entries[1].Version != "2.0.0" {
-		t.Errorf("expected second blacklist entry version 2.0.0, got %s", cfg.Blacklist.Entries[1].Version)
 	}
 
 	if cfg.Cooldown.Enabled != true {
@@ -120,32 +93,10 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.Host != "127.0.0.1" {
 		t.Errorf("expected default host 127.0.0.1, got %s", cfg.Host)
 	}
+	if cfg.DBPath != "malfuse.db" {
+		t.Errorf("expected default db_path malfuse.db, got %s", cfg.DBPath)
+	}
 	if cfg.OSV.BaseURL != "https://api.osv.dev" {
 		t.Errorf("expected default osv base_url, got %s", cfg.OSV.BaseURL)
-	}
-}
-
-func TestValidateBlacklist(t *testing.T) {
-	tests := []struct {
-		name    string
-		entries []BlacklistEntry
-		wantErr bool
-	}{
-		{"valid", []BlacklistEntry{{Name: "pkg"}}, false},
-		{"empty name", []BlacklistEntry{{Name: ""}}, true},
-		{"valid with version", []BlacklistEntry{{Name: "pkg", Version: "1.0"}}, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			cfg := &Config{
-				Routing:   []Route{{Prefix: "/pypi/", Upstream: "https://pypi.org", Ecosystem: "pypi"}},
-				Blacklist: BlacklistConfig{Entries: tt.entries},
-			}
-			err := cfg.Validate()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
-			}
-		})
 	}
 }

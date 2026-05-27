@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"log"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"malFuse/internal/config"
+	"malFuse/internal/db/schema"
 	"malFuse/internal/engine"
 	"malFuse/internal/osv"
 	"malFuse/internal/proxy"
@@ -53,8 +55,19 @@ func main() {
 
 	popPackages := loadPopularPackages()
 
+	var malDB *sql.DB
+	if cfg.DBPath != "" {
+		malDB, err = schema.Open(cfg.DBPath)
+		if err != nil {
+			log.Printf("[WARN] Failed to open malicious database: %v", err)
+			malDB = nil
+		} else {
+			defer malDB.Close()
+		}
+	}
+
 	checks := []engine.CheckFunc{}
-	checks = append(checks, engine.BlacklistCheck(toEngineBlacklist(cfg.Blacklist.Entries)))
+	checks = append(checks, engine.MaliciousDBCheck(malDB))
 
 	if cfg.Cooldown.Enabled {
 		metadataFetcher := engine.NewRegistryMetadataFetcher(routesForEngine)
@@ -98,17 +111,6 @@ func main() {
 		log.Fatalf("Server error: %v", err)
 	}
 	log.Println("Server stopped")
-}
-
-func toEngineBlacklist(entries []config.BlacklistEntry) []engine.BlacklistEntry {
-	result := make([]engine.BlacklistEntry, len(entries))
-	for i, e := range entries {
-		result[i] = engine.BlacklistEntry{
-			Name:    e.Name,
-			Version: e.Version,
-		}
-	}
-	return result
 }
 
 func loadPopularPackages() []string {

@@ -1,3 +1,6 @@
 .opencode
 .superpowers
 .idea
+ossf-malicious-packages/.*
+malfuse-db
+malfuse.db

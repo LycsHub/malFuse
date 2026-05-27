@@ -1,13 +1,12 @@
 {
   "port": "8080",
   "host": "127.0.0.1",
+  "db_path": "malfuse.db",
+  "repo_proxy": "ghfast.top",
   "routing": [
     {"prefix": "/pypi/", "upstream": "https://pypi.org", "ecosystem": "pypi"},
     {"prefix": "/npm/", "upstream": "https://registry.npmjs.org", "ecosystem": "npm"}
   ],
-  "blacklist": {
-    "entries": []
-  },
   "cooldown": {
     "enabled": false,
     "duration": "48h"

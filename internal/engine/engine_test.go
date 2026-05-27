@@ -33,7 +33,7 @@ func TestEngineCheckSequentialShortCircuit(t *testing.T) {
 	callOrder := []string{}
 
 	e := &Engine{
-		checks: []checkFunc{
+		checks: []CheckFunc{
 			func(ctx context.Context, req Request) Result {
 				callOrder = append(callOrder, "first")
 				return Result{Block: true, Reason: "first_check"}
@@ -59,7 +59,7 @@ func TestEngineCheckSequentialShortCircuit(t *testing.T) {
 
 func TestEngineCheckAllPass(t *testing.T) {
 	e := &Engine{
-		checks: []checkFunc{
+		checks: []CheckFunc{
 			func(ctx context.Context, req Request) Result {
 				return Result{Block: false}
 			},
@@ -78,7 +78,7 @@ func TestEngineCheckAllPass(t *testing.T) {
 func TestEngineCheckContextCancellation(t *testing.T) {
 	blocked := false
 	e := &Engine{
-		checks: []checkFunc{
+		checks: []CheckFunc{
 			func(ctx context.Context, req Request) Result {
 				select {
 				case <-ctx.Done():
@@ -106,7 +106,7 @@ func TestEngineCheckContextCancellation(t *testing.T) {
 
 func TestEngineCheckContextDeadlineExceeded(t *testing.T) {
 	e := &Engine{
-		checks: []checkFunc{
+		checks: []CheckFunc{
 			func(ctx context.Context, req Request) Result {
 				select {
 				case <-ctx.Done():

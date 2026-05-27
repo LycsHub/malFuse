@@ -1,0 +1,24 @@
+{
+  "port": "8080",
+  "host": "127.0.0.1",
+  "routing": [
+    {"prefix": "/pypi/", "upstream": "https://pypi.org", "ecosystem": "pypi"},
+    {"prefix": "/npm/", "upstream": "https://registry.npmjs.org", "ecosystem": "npm"}
+  ],
+  "blacklist": {
+    "entries": []
+  },
+  "cooldown": {
+    "enabled": false,
+    "duration": "48h"
+  },
+  "typo": {
+    "enabled": true,
+    "threshold": 2
+  },
+  "osv": {
+    "enabled": true,
+    "ttl": "1h",
+    "base_url": "https://api.osv.dev"
+  }
+}

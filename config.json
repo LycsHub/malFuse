@@ -19,5 +19,23 @@
     "enabled": true,
     "ttl": "1h",
     "base_url": "https://api.osv.dev"
+  },
+  "script_scan": {
+    "enabled": false,
+    "max_file_size": 5242880,
+    "max_total_size": 52428800,
+    "entropy": {
+      "enabled": true,
+      "threshold": 4.5
+    },
+    "obfuscation": {
+      "enabled": true,
+      "base64_min_length": 100,
+      "hex_min_length": 20
+    },
+    "network": {
+      "enabled": true,
+      "allow_private_ips": false
+    }
   }
 }

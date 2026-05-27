@@ -7,14 +7,15 @@ import (
 )
 
 type Config struct {
-	Port      string         `json:"port"`
-	Host      string         `json:"host"`
-	DBPath    string         `json:"db_path"`
-	RepoProxy string         `json:"repo_proxy"`
-	Routing   []Route        `json:"routing"`
-	Cooldown  CooldownConfig `json:"cooldown"`
-	Typo      TypoConfig     `json:"typo"`
-	OSV       OSVConfig      `json:"osv"`
+	Port       string           `json:"port"`
+	Host       string           `json:"host"`
+	DBPath     string           `json:"db_path"`
+	RepoProxy  string           `json:"repo_proxy"`
+	Routing    []Route          `json:"routing"`
+	Cooldown   CooldownConfig   `json:"cooldown"`
+	Typo       TypoConfig       `json:"typo"`
+	OSV        OSVConfig        `json:"osv"`
+	ScriptScan ScriptScanConfig `json:"script_scan"`
 }
 
 type Route struct {
@@ -119,4 +120,29 @@ func (c *Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+type ScriptScanConfig struct {
+	Enabled      bool              `json:"enabled"`
+	MaxFileSize  int64             `json:"max_file_size"`
+	MaxTotalSize int64             `json:"max_total_size"`
+	Entropy      EntropyConfig     `json:"entropy"`
+	Obfuscation  ObfuscationConfig `json:"obfuscation"`
+	Network      NetworkConfig     `json:"network"`
+}
+
+type EntropyConfig struct {
+	Enabled   bool    `json:"enabled"`
+	Threshold float64 `json:"threshold"`
+}
+
+type ObfuscationConfig struct {
+	Enabled          bool `json:"enabled"`
+	Base64MinLength  int  `json:"base64_min_length"`
+	HexMinLength     int  `json:"hex_min_length"`
+}
+
+type NetworkConfig struct {
+	Enabled         bool `json:"enabled"`
+	AllowPrivateIPs bool `json:"allow_private_ips"`
 }

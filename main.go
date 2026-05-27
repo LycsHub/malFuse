@@ -18,6 +18,7 @@ import (
 	"malFuse/internal/engine"
 	"malFuse/internal/osv"
 	"malFuse/internal/proxy"
+	"malFuse/internal/scanner"
 )
 
 func main() {
@@ -82,6 +83,23 @@ func main() {
 
 	eng := engine.New(checks...)
 	handler := proxy.New(eng, routes)
+
+	if cfg.ScriptScan.Enabled {
+		sc := &scanner.StreamChecker{
+			Config: scanner.ScanConfig{
+				MaxFileSize:        cfg.ScriptScan.MaxFileSize,
+				MaxTotalSize:       cfg.ScriptScan.MaxTotalSize,
+				EntropyEnabled:     cfg.ScriptScan.Entropy.Enabled,
+				EntropyThreshold:   cfg.ScriptScan.Entropy.Threshold,
+				ObfuscationEnabled: cfg.ScriptScan.Obfuscation.Enabled,
+				ObfuscationMinB64:  cfg.ScriptScan.Obfuscation.Base64MinLength,
+				ObfuscationMinHex:  cfg.ScriptScan.Obfuscation.HexMinLength,
+				NetworkEnabled:     cfg.ScriptScan.Network.Enabled,
+				AllowPrivateIPs:    cfg.ScriptScan.Network.AllowPrivateIPs,
+			},
+		}
+		handler.SetStreamChecker(sc)
+	}
 
 	addr := fmt.Sprintf("%s:%s", cfg.Host, cfg.Port)
 	srv := &http.Server{

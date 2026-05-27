@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -16,8 +17,9 @@ type Checker interface {
 }
 
 type Handler struct {
-	engine Checker
-	routes map[string]RouteEntry
+	engine        Checker
+	streamChecker engine.StreamChecker
+	routes        map[string]RouteEntry
 }
 
 type RouteEntry struct {
@@ -30,6 +32,10 @@ func New(eng Checker, routes map[string]RouteEntry) *Handler {
 		engine: eng,
 		routes: routes,
 	}
+}
+
+func (h *Handler) SetStreamChecker(sc engine.StreamChecker) {
+	h.streamChecker = sc
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +90,34 @@ func (h *Handler) extractPackageInfo(path, ecosystem string) (string, string) {
 func (h *Handler) forward(w http.ResponseWriter, r *http.Request, entry RouteEntry, prefix string) {
 	proxy := httputil.NewSingleHostReverseProxy(entry.Upstream)
 
+	if h.streamChecker != nil {
+		proxy.ModifyResponse = func(resp *http.Response) error {
+			ct := resp.Header.Get("Content-Type")
+			if !isArchive(ct) {
+				return nil
+			}
+
+			ctx, cancel := context.WithCancel(resp.Request.Context())
+			pr, pw := io.Pipe()
+			resp.Body = &teeReadCloser{
+				reader: io.TeeReader(resp.Body, pw),
+				closer: resp.Body,
+			}
+
+			go func() {
+				defer pr.Close()
+				result := h.streamChecker.StreamCheck(engine.Request{}, pr)
+				if result.Block {
+					log.Printf("[BLOCKED] script scan (reason: %s)", result.Reason)
+					cancel()
+				}
+			}()
+
+			resp.Request = resp.Request.WithContext(ctx)
+			return nil
+		}
+	}
+
 	originalDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
 		originalDirector(req)
@@ -103,6 +137,25 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, entry RouteEnt
 	}
 
 	proxy.ServeHTTP(w, r)
+}
+
+type teeReadCloser struct {
+	reader io.Reader
+	closer io.Closer
+}
+
+func (t *teeReadCloser) Read(p []byte) (int, error) { return t.reader.Read(p) }
+func (t *teeReadCloser) Close() error               { return t.closer.Close() }
+
+func isArchive(ct string) bool {
+	if ct == "" {
+		return false
+	}
+	ct = strings.ToLower(ct)
+	return strings.Contains(ct, "application/x-tar") ||
+		strings.Contains(ct, "application/gzip") ||
+		strings.Contains(ct, "application/zip") ||
+		strings.Contains(ct, "application/octet-stream")
 }
 
 func (h *Handler) matchingPrefix(path string) string {

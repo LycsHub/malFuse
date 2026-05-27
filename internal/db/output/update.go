@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"malFuse/internal/db/ingest"
 	"malFuse/internal/db/schema"
@@ -143,7 +144,7 @@ func getPrevCommit(db *sql.DB, repoDir, eco string) string {
 
 func savePrevCommit(db *sql.DB, repoDir, eco, commit string) {
 	if db != nil {
-		schema.SetUpdateState(db, eco, commit, "")
+		schema.SetUpdateState(db, eco, commit, time.Now().Format(time.RFC3339))
 	}
 
 	// Also save to state file

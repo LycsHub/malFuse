@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -53,11 +52,9 @@ func main() {
 		})
 	}
 
-	popPackages := loadPopularPackages()
-
 	var malDB *sql.DB
 	if cfg.DBPath != "" {
-		malDB, err = schema.Open(cfg.DBPath)
+		malDB, err = schema.OpenReadOnly(cfg.DBPath)
 		if err != nil {
 			log.Printf("[WARN] Failed to open malicious database: %v", err)
 			malDB = nil
@@ -75,7 +72,7 @@ func main() {
 	}
 
 	if cfg.Typo.Enabled {
-		checks = append(checks, engine.TypoCheck(popPackages, cfg.Typo.Threshold))
+		checks = append(checks, engine.TypoCheck(nil, cfg.Typo.Threshold))
 	}
 
 	if cfg.OSV.Enabled {
@@ -111,21 +108,4 @@ func main() {
 		log.Fatalf("Server error: %v", err)
 	}
 	log.Println("Server stopped")
-}
-
-func loadPopularPackages() []string {
-	data, err := os.ReadFile("internal/engine/packages.txt")
-	if err != nil {
-		log.Printf("[WARN] Could not load popular packages: %v", err)
-		return nil
-	}
-	lines := strings.Split(string(data), "\n")
-	packages := make([]string, 0, len(lines))
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			packages = append(packages, line)
-		}
-	}
-	return packages
 }

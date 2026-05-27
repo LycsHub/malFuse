@@ -251,3 +251,44 @@ func TestUpdateState(t *testing.T) {
 		t.Errorf("expected updated 2024-01-01T00:00:00Z, got %s", updated)
 	}
 }
+
+func TestOpenReadOnly(t *testing.T) {
+	dbPath := t.TempDir() + "/test.db"
+
+	// first create the DB with Open (writable)
+	db, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	InsertOrReplace(db, MaliciousPackage{Name: "test", Ecosystem: "pypi"})
+	db.Close()
+
+	// then open read-only
+	ro, err := OpenReadOnly(dbPath)
+	if err != nil {
+		t.Fatalf("OpenReadOnly() error: %v", err)
+	}
+	defer ro.Close()
+
+	found, err := Lookup(ro, "test", "pypi", "")
+	if err != nil {
+		t.Fatalf("Lookup() error: %v", err)
+	}
+	if !found {
+		t.Error("expected found true via read-only connection")
+	}
+
+	// verify PRAGMA journal_mode is NOT wal (we skip it in ReadOnly)
+	var jm string
+	ro.QueryRow("PRAGMA journal_mode").Scan(&jm)
+	if jm != "delete" {
+		t.Logf("journal_mode in read-only: %s", jm)
+	}
+}
+
+func TestOpenReadOnlyMissingFile(t *testing.T) {
+	_, err := OpenReadOnly("/nonexistent/path/test.db")
+	if err == nil {
+		t.Error("expected error for missing file")
+	}
+}

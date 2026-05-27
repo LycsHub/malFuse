@@ -1,6 +1,13 @@
 package engine
 
-import "context"
+import (
+	"context"
+	_ "embed"
+	"strings"
+)
+
+//go:embed packages.txt
+var popularPackagesData string
 
 func levenshteinDistance(a, b string) int {
 	la, lb := len(a), len(b)
@@ -47,6 +54,9 @@ func min(vals ...int) int {
 }
 
 func TypoCheck(popular []string, threshold int) CheckFunc {
+	if popular == nil {
+		popular = loadEmbeddedPackages()
+	}
 	popMap := make(map[string]struct{}, len(popular))
 	for _, p := range popular {
 		popMap[p] = struct{}{}
@@ -66,4 +76,16 @@ func TypoCheck(popular []string, threshold int) CheckFunc {
 		}
 		return Result{Block: false}
 	}
+}
+
+func loadEmbeddedPackages() []string {
+	lines := strings.Split(strings.TrimSpace(popularPackagesData), "\n")
+	packages := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") {
+			packages = append(packages, line)
+		}
+	}
+	return packages
 }

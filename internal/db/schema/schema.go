@@ -39,6 +39,18 @@ func Open(path string) (*sql.DB, error) {
 	return db, nil
 }
 
+func OpenReadOnly(path string) (*sql.DB, error) {
+	db, err := sql.Open("sqlite", path+"?mode=ro")
+	if err != nil {
+		return nil, fmt.Errorf("open database read-only: %w", err)
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("database not accessible: %w", err)
+	}
+	return db, nil
+}
+
 func migrate(db *sql.DB) error {
 	ddl := `
 	CREATE TABLE IF NOT EXISTS malicious_packages (

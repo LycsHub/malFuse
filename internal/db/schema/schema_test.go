@@ -204,6 +204,27 @@ func TestLookupNotFound(t *testing.T) {
 	}
 }
 
+func TestLookupNoVersionRequestMatchesSpecificVersion(t *testing.T) {
+	dbPath := t.TempDir() + "/test.db"
+	defer os.Remove(dbPath)
+
+	db, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open() error: %v", err)
+	}
+	defer db.Close()
+
+	InsertOrReplace(db, MaliciousPackage{Name: "evil-pkg", Ecosystem: "pypi", Version: "1.0"})
+
+	found, err := Lookup(db, "evil-pkg", "pypi", "")
+	if err != nil {
+		t.Fatalf("Lookup() error: %v", err)
+	}
+	if !found {
+		t.Error("expected found true when request has no version but DB has specific version")
+	}
+}
+
 func TestUpdateState(t *testing.T) {
 	dbPath := t.TempDir() + "/test.db"
 	defer os.Remove(dbPath)

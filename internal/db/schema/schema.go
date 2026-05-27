@@ -102,11 +102,20 @@ func Delete(db DBExec, name, ecosystem, version string) error {
 
 func Lookup(db DBExec, name, ecosystem, version string) (bool, error) {
 	var count int
-	err := db.QueryRow(
-		`SELECT COUNT(*) FROM malicious_packages
-		 WHERE name=? AND ecosystem=? AND (version=? OR version IS NULL)`,
-		name, ecosystem, version,
-	).Scan(&count)
+	var err error
+	if version == "" {
+		err = db.QueryRow(
+			`SELECT COUNT(*) FROM malicious_packages
+			 WHERE name=? AND ecosystem=?`,
+			name, ecosystem,
+		).Scan(&count)
+	} else {
+		err = db.QueryRow(
+			`SELECT COUNT(*) FROM malicious_packages
+			 WHERE name=? AND ecosystem=? AND (version=? OR version IS NULL)`,
+			name, ecosystem, version,
+		).Scan(&count)
+	}
 	if err != nil {
 		return false, fmt.Errorf("lookup query: %w", err)
 	}

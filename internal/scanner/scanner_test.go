@@ -103,7 +103,7 @@ func TestScanNonScriptFilesIgnored(t *testing.T) {
 	content := `eval(atob("` + longBase64() + `"))`
 	data := makeTarGz(t, map[string]string{
 		"pkg-1.0/README.md": content,
-		"pkg-1.0/index.js":   content,
+		"pkg-1.0/LICENSE":   content,
 	})
 	result := Scan(bytes.NewReader(data), "pkg", ScanConfig{
 		MaxFileSize:        1024 * 1024,
@@ -117,7 +117,7 @@ func TestScanNonScriptFilesIgnored(t *testing.T) {
 		AllowPrivateIPs:    false,
 	})
 	if result.Block {
-		t.Error("expected PASS for non-install-script files")
+		t.Error("expected PASS for non-executable files (README.md, LICENSE)")
 	}
 }
 

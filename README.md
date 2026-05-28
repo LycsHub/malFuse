@@ -6,14 +6,14 @@
 
 ## 当前状态
 
-P0 核心骨架已实现，包含两个二进制：
+P0 + P1 已全部完成，P2 进行中：
 
 | 组件 | 说明 |
 |------|------|
-| `malfuse` | 本地 HTTP 代理（127.0.0.1:8080），拦截安装请求，4 层检测后放行或返回 403 |
+| `malfuse` | 本地 HTTP 代理（127.0.0.1:8080），5 层检测管道 + daemon + 健康检查 + 白名单 |
 | `malfuse-db` | 恶意包数据库管理 CLI，从 [ossf/malicious-packages](https://github.com/ossf/malicious-packages) 拉取 OSV 数据存入 SQLite |
 
-**数据库规模：** 252,637 条恶意包记录，覆盖 11 个生态系统（npm, PyPI, NuGet, RubyGems, Go, Crates.io, Maven, Packagist, VSCode 等）。
+**数据库规模：** 252,637 条恶意包记录，覆盖 11 个生态系统。
 
 ---
 
@@ -23,12 +23,50 @@ P0 核心骨架已实现，包含两个二进制：
 # 1. 生成恶意包数据库（需 git + 网络）
 ./malfuse-db --mode direct --db malfuse.db --repo ossf-malicious-packages
 
-# 2. 启动代理
-./malfuse -config config.json
-
-# 3. 配置包管理器（一键）
+# 2. 配置包管理器（一键）
 ./malfuse link
+
+# 3. 启动代理
+./malfuse start                 # 后台 daemon 模式
+./malfuse -config config.json   # 或前台直接运行
+
+# 4. 安装依赖（走代理）
+pip install requests
+npm install lodash
 ```
+
+---
+
+## CLI 命令
+
+```bash
+malfuse start                   # 后台启动 daemon
+malfuse stop                    # 停止 daemon
+malfuse status                  # 查看运行状态
+malfuse link [--target pip|npm] # 配置包管理器
+malfuse unlink [--target pip]   # 还原包管理器配置
+malfuse allow add <pkg> --ecosystem pypi [--version 1.0]  # 添加白名单
+malfuse allow remove <pkg> --ecosystem npm                 # 移除白名单
+malfuse allow list [--ecosystem pypi]                      # 查看白名单
+malfuse -config config.json      # 前台直接运行
+```
+
+---
+
+## 检测管道（顺序执行，任一命中即停止）
+
+| # | 检测项 | 数据源 | 失败策略 | 默认 |
+|---|--------|--------|----------|------|
+| 0 | **白名单** | SQLite whitelist 表 | — | 启用 |
+| 1 | **恶意包数据库** | SQLite（252,637 条） | 无 DB 则跳过 | 启用 |
+| 2 | **安全冷却期** | 上游 Registry 元数据时间戳 | fail-closed（阻断） | 关闭 |
+| 3 | **Typo-Squatting** | 内嵌 2790 流行包 + Levenshtein | — | 启用 |
+| 4 | **OSV API** | 实时漏洞查询 + 内存 TTL 缓存 | fail-open（放行） | 启用 |
+| 5 | **流式脚本扫描** | TeeReader 边下边扫 | fail-open（放行） | 关闭 |
+
+管道之外还有 `/health` 健康检查端点（`GET /health → {"status":"ok","db":true,"uptime":"2h34m"}`）。
+
+---
 
 ## 包管理器配置
 
@@ -47,55 +85,31 @@ P0 核心骨架已实现，包含两个二进制：
 
 ---
 
-## 检测管道（顺序执行，任一命中即阻断）
-
-| # | 检测项 | 数据源 | 失败策略 | 默认 |
-|---|--------|--------|----------|------|
-| 1 | **恶意包数据库** | SQLite（252,637 条） | 无 DB 则跳过 | 启用 |
-| 2 | **安全冷却期** | 上游 Registry 元数据时间戳 | fail-closed（阻断） | 关闭 |
-| 3 | **Typo-Squatting** | 内嵌 Top 2000 流行包 + Levenshtein 编辑距离 | — | 启用 |
-| 4 | **OSV API** | 实时 OSV 漏洞查询 + 内存 TTL 缓存 | fail-open（放行） | 启用 |
-
----
-
 ## 目录结构
 
 ```
 malFuse/
-├── main.go                    # malfuse 代理入口
-├── config.json                # 配置文件（路由、检测开关、db_path、repo_proxy）
+├── main.go                    # malfuse 代理入口（cobra CLI）
+├── config.json                # 配置文件
 ├── cmd/
 │   └── malfuse-db/            # 数据库管理 CLI 入口
 ├── internal/
 │   ├── config/                # JSON 配置加载
-│   ├── proxy/                 # HTTP 代理层（路由匹配、上游转发、health）
-│   ├── engine/                # 检测管道（恶意库、冷却期、typo、OSV、流式扫描）
-│   ├── osv/                   # OSV API 客户端 + 内存 TTL 缓存
-│   ├── scanner/               # 流式脚本扫描（熵值/混淆/外连检测 + JS/Python 结构解析）
+│   ├── proxy/                 # HTTP 代理层（路由、转发、health）
+│   ├── engine/                # 检测管道 + 白名单
+│   ├── scanner/               # 流式脚本扫描（熵/混淆/外连 + JS/Python 解析）
+│   ├── osv/                   # OSV API 客户端 + TTL 缓存
 │   ├── logger/                # logrus 结构化日志
 │   ├── daemon/                # 后台进程管理（PID、信号）
-│   ├── linker/                # 包管理器配置联动（pip/npm/pnpm/yarn）
+│   ├── linker/                # 包管理器配置联动
 │   └── db/
-│       ├── schema/            # SQLite DDL + CRUD（WAL 模式）
+│       ├── schema/            # SQLite DDL + WAL
 │       ├── ingest/            # OSV JSON 解析 + Git 操作
-│       └── output/            # 直接写库 / 生成 SQL 增量文件
-├── malfuse.db                 # SQLite 恶意包数据库（由 malfuse-db 生成）
+│       └── output/            # 直接写库 / SQL 增量文件
+├── docs/                      # 手动配置文档
+├── malfuse.db                 # SQLite 数据库
 └── ossf-malicious-packages/   # Git 仓库缓存
 ```
-
----
-
-## malfuse-db 命令
-
-```bash
-# 直接写入 SQLite（在线增量更新）
-./malfuse-db --mode direct --db malfuse.db --repo ossf-malicious-packages
-
-# 生成 SQL 增量文件（离线使用）
-./malfuse-db --mode sql --repo ossf-malicious-packages
-```
-
-**增量机制：** 首次全量扫描，后续通过 `git fetch` + `git diff --name-status` 仅处理变更文件。
 
 ---
 
@@ -106,23 +120,34 @@ malFuse/
   "port": "8080",
   "host": "127.0.0.1",
   "db_path": "malfuse.db",
+  "pid_file": "malfuse.pid",
   "repo_proxy": "ghfast.top",
+  "logging": { "level": "info", "format": "text", "output": "stdout" },
   "routing": [
     {"prefix": "/pypi/", "upstream": "https://pypi.org", "ecosystem": "pypi"},
     {"prefix": "/npm/", "upstream": "https://registry.npmjs.org", "ecosystem": "npm"}
   ],
-  "cooldown": {"enabled": false, "duration": "48h"},
-  "typo": {"enabled": true, "threshold": 2},
-  "osv": {"enabled": true, "ttl": "1h", "base_url": "https://api.osv.dev"}
+  "cooldown": { "enabled": false, "duration": "48h" },
+  "typo": { "enabled": true, "threshold": 2 },
+  "osv": { "enabled": true, "ttl": "1h", "base_url": "https://api.osv.dev" },
+  "script_scan": {
+    "enabled": false,
+    "max_file_size": 5242880,
+    "max_total_size": 52428800,
+    "entropy": { "enabled": true, "threshold": 4.5 },
+    "obfuscation": { "enabled": true, "base64_min_length": 100, "hex_min_length": 20 },
+    "network": { "enabled": true, "allow_private_ips": false }
+  }
 }
 ```
 
-- `repo_proxy`: GitHub 加速代理（如 `ghfast.top`），不填则不使用代理
-- `db_path`: SQLite 数据库路径，不存在时自动跳过数据库检测
-- `pid_file`: daemon 模式 PID 文件路径（默认 `malfuse.pid`）
-- `logging`: 日志配置（level/format/output）
-- `script_scan`: 流式脚本扫描配置（默认关闭，opt-in）
-- 路由支持多 Registry，按 URL 前缀匹配
+| 字段 | 说明 |
+|------|------|
+| `repo_proxy` | GitHub 加速代理，不填则不使用 |
+| `db_path` | DB 不存在时自动跳过数据库检测 |
+| `pid_file` | daemon 模式 PID 文件路径 |
+| `logging` | 日志级别/格式/输出（text/json，stdout/文件） |
+| `script_scan` | 流式脚本扫描（默认关闭，opt-in） |
 
 ---
 
@@ -144,22 +169,21 @@ CGO_ENABLED=0 go build -o malfuse-db ./cmd/malfuse-db/
 - [x] HTTP 反向代理 + 路由匹配
 - [x] 恶意包 SQLite 数据库（252,637 条，11 个生态系统）
 - [x] `malfuse-db` CLI（git 增量爬取 + SQL 离线模式）
-- [x] 4 层检测管道（malicious-db / cooldown / typo / OSV）
-- [x] 流式脚本扫描器（熵值 + 混淆 + 外连检测）
-- [x] package.json scripts 解析 + Python .pth / pyproject.toml 检测
+- [x] 检测管道（malicious-db / cooldown / typo / OSV）
+- [x] 流式脚本扫描器（熵值 / 混淆 / 外连 + JS/Python 结构解析）
 
-### 🟡 P1 — 自动化与运维（已完成）
+### ✅ P1 — 自动化与运维（已完成）
 
-- [x] `malfuse link` / `malfuse unlink` 自动配置 pip/npm/pnpm/yarn
+- [x] `malfuse link` / `malfuse unlink`（pip / npm / pnpm / yarn）
 - [x] logrus 结构化日志（级别控制、JSON 格式、文件输出）
-- [x] `/health` 健康检查端点（DB 状态 + uptime）
+- [x] `/health` 健康检查端点
 - [x] 后台 daemon 模式（`malfuse start/stop/status`）
 - [x] 端到端集成测试套件
 
 ### 🟢 P2 — 深度扫描与生态扩展
 
+- [x] `malfuse allow` 白名单管理
 - [ ] 更多生态路由（RubyGems、NuGet、Crates.io、Go modules）
-- [ ] `malfuse allow` 白名单管理
 - [ ] Docker 镜像分发
 - [ ] CI/CD Pipeline（lint、test、build、release）
 - [ ] 安装脚本 AST 语法分析
@@ -169,7 +193,9 @@ CGO_ENABLED=0 go build -o malfuse-db ./cmd/malfuse-db/
 ## 技术栈
 
 - **Go 1.19+** stdlib 为主
+- **github.com/spf13/cobra** — CLI 框架
+- **github.com/sirupsen/logrus** — 结构化日志
 - **modernc.org/sqlite** — 纯 Go SQLite，零 CGo
+- **net/http/httputil.ReverseProxy** — HTTP 代理转发
 - **OSV Schema 1.5.0** — 恶意包报告格式
 - **Levenshtein 编辑距离** — Typo-Squatting 检测
-- **`net/http/httputil.ReverseProxy`** — HTTP 代理转发

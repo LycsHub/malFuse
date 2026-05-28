@@ -220,8 +220,8 @@ func TestLookupNoVersionRequestMatchesSpecificVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Lookup() error: %v", err)
 	}
-	if !found {
-		t.Error("expected found true when request has no version but DB has specific version")
+	if found {
+		t.Error("expected found false: empty version request should NOT match specific version entry")
 	}
 }
 

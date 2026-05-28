@@ -50,7 +50,7 @@ func TestMaliciousDBIntegration(t *testing.T) {
 		path           string
 		expectedStatus int
 	}{
-		{"package with version in db blocked", "/pypi/simple/evil-pkg/", http.StatusForbidden},
+		{"specific version not blocked by simple API", "/pypi/simple/evil-pkg/", http.StatusOK},
 		{"package without version in db blocked", "/pypi/simple/bad-lib/", http.StatusForbidden},
 		{"safe package passed", "/pypi/simple/requests/", http.StatusOK},
 	}

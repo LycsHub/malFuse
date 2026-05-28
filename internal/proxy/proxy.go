@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"malFuse/internal/db/schema"
 	"malFuse/internal/engine"
 	"malFuse/internal/logger"
 )
@@ -25,6 +27,7 @@ type Handler struct {
 	streamChecker engine.StreamChecker
 	routes        map[string]RouteEntry
 	dbPinger      DBPinger
+	dbFilter      *sql.DB
 	startTime     time.Time
 }
 
@@ -47,6 +50,10 @@ func New(eng Checker, routes map[string]RouteEntry) *Handler {
 
 func (h *Handler) SetDBPinger(p DBPinger) {
 	h.dbPinger = p
+}
+
+func (h *Handler) SetDBFilter(db *sql.DB) {
+	h.dbFilter = db
 }
 
 func (h *Handler) SetStreamChecker(sc engine.StreamChecker) {
@@ -142,15 +149,23 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, entry RouteEnt
 			}
 		}
 
-		// Rewrite npm tarball URLs in JSON response
-		if isJSON(resp.Header.Get("Content-Type")) && strings.HasPrefix(r.URL.Path, "/npm/") {
-			body, err := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			if err == nil {
-				rewritten := rewriteNPMTarballs(string(body), entry.Upstream.String())
-				resp.Body = io.NopCloser(strings.NewReader(rewritten))
-				resp.ContentLength = int64(len(rewritten))
-				resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(rewritten)))
+		// Filter malicious versions from npm JSON metadata response
+		if h.dbFilter != nil && isJSON(resp.Header.Get("Content-Type")) && strings.HasPrefix(r.URL.Path, "/npm/") {
+			pkgName, _ := h.extractPackageInfo(strings.TrimPrefix(r.URL.Path, "/npm/"), "npm")
+			if pkgName != "" {
+				body, err := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				if err == nil {
+					filtered, changed := filterNPMVersions(body, h.dbFilter, pkgName)
+					if changed {
+						resp.Body = io.NopCloser(bytes.NewReader(filtered))
+						resp.ContentLength = int64(len(filtered))
+						resp.Header.Set("Cache-Control", "no-cache, no-store, must-revalidate")
+					} else {
+						resp.Body = io.NopCloser(bytes.NewReader(body))
+						resp.ContentLength = int64(len(body))
+					}
+				}
 			}
 		}
 
@@ -374,7 +389,41 @@ func rewriteURLs(body, upstream string) string {
 }
 
 func rewriteNPMTarballs(body, upstream string) string {
-	// Replace `"tarball":"https://<upstream>/..." with `"tarball":"/npm/..."`
-	prefix := `"tarball":"` + upstream
-	return string(bytes.ReplaceAll([]byte(body), []byte(prefix), []byte(`"tarball":"/npm`)))
+	return body // deprecated
+}
+
+func filterNPMVersions(body []byte, db *sql.DB, pkgName string) ([]byte, bool) {
+	var original map[string]json.RawMessage
+	if err := json.Unmarshal(body, &original); err != nil {
+		return body, false
+	}
+
+	versionsRaw, ok := original["versions"]
+	if !ok {
+		return body, false
+	}
+
+	var versions map[string]json.RawMessage
+	if err := json.Unmarshal(versionsRaw, &versions); err != nil {
+		return body, false
+	}
+
+	filtered := false
+	for ver := range versions {
+		found, _ := schema.Lookup(db, pkgName, "npm", ver)
+		if found {
+			logger.Debug("npm filter: removing version", "package", pkgName, "version", ver)
+			delete(versions, ver)
+			filtered = true
+		}
+	}
+	if !filtered {
+		return body, false
+	}
+
+	newVersions, _ := json.Marshal(versions)
+	original["versions"] = newVersions
+	result, _ := json.Marshal(original)
+	logger.Info("npm: filtered malicious versions", "package", pkgName)
+	return result, true
 }

@@ -126,7 +126,7 @@ func Lookup(db DBExec, name, ecosystem, version string) (bool, error) {
 	if version == "" {
 		err = db.QueryRow(
 			`SELECT COUNT(*) FROM malicious_packages
-			 WHERE name=? AND ecosystem=? AND version IS NULL`,
+			 WHERE name=? AND ecosystem=? AND (version IS NULL OR version='')`,
 			name, ecosystem,
 		).Scan(&count)
 	} else {

@@ -217,6 +217,7 @@ func runProxyWithConfig(cfg *config.Config) error {
 
 	if malDB != nil {
 		handler.SetDBPinger(malDB)
+		handler.SetDBFilter(malDB)
 	}
 
 	if cfg.ScriptScan.Enabled {

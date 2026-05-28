@@ -54,6 +54,23 @@ func main() {
 	unlinkCmd.Flags().String("target", "", "package manager: pip, npm, or empty for both")
 	rootCmd.AddCommand(unlinkCmd)
 
+	allowCmd := &cobra.Command{Use: "allow", Short: "Manage whitelist (allow package through firewall)"}
+	allowAdd := &cobra.Command{Use: "add <name>", Short: "Add package to whitelist", Args: cobra.ExactArgs(1), RunE: allowAddCmd}
+	allowAdd.Flags().String("ecosystem", "pypi", "ecosystem: pypi or npm")
+	allowAdd.Flags().String("version", "", "version constraint (empty = all versions)")
+	allowCmd.AddCommand(allowAdd)
+
+	allowRemove := &cobra.Command{Use: "remove <name>", Short: "Remove package from whitelist", Args: cobra.ExactArgs(1), RunE: allowRemoveCmd}
+	allowRemove.Flags().String("ecosystem", "pypi", "ecosystem: pypi or npm")
+	allowRemove.Flags().String("version", "", "version constraint")
+	allowCmd.AddCommand(allowRemove)
+
+	allowList := &cobra.Command{Use: "list", Short: "List whitelisted packages", RunE: allowListCmd}
+	allowList.Flags().String("ecosystem", "", "filter by ecosystem (empty = all)")
+	allowCmd.AddCommand(allowList)
+
+	rootCmd.AddCommand(allowCmd)
+
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return runProxy()
 	}
@@ -180,7 +197,7 @@ func runProxyWithConfig(cfg *config.Config) error {
 		}
 	}
 
-	checks := []engine.CheckFunc{engine.MaliciousDBCheck(malDB)}
+	checks := []engine.CheckFunc{engine.WhitelistCheck(malDB), engine.MaliciousDBCheck(malDB)}
 
 	if cfg.Cooldown.Enabled {
 		metadataFetcher := engine.NewRegistryMetadataFetcher(routesForEngine)
@@ -258,4 +275,73 @@ func linkCmdFn(cmd *cobra.Command, args []string) error {
 func unlinkCmdFn(cmd *cobra.Command, args []string) error {
 	target, _ := cmd.Flags().GetString("target")
 	return linker.Unlink(target)
+}
+
+func allowAddCmd(cmd *cobra.Command, args []string) error {
+	cfg, _ := loadConfig()
+	db, err := schema.Open(cfg.DBPath)
+	if err != nil {
+		return fmt.Errorf("open db: %w", err)
+	}
+	defer db.Close()
+
+	eco, _ := cmd.Flags().GetString("ecosystem")
+	ver, _ := cmd.Flags().GetString("version")
+	name := args[0]
+
+	if err := schema.InsertWhitelist(db, name, eco, ver); err != nil {
+		return fmt.Errorf("add whitelist: %w", err)
+	}
+	fmt.Printf("Added %s (%s) to whitelist\n", name, eco)
+	return nil
+}
+
+func allowRemoveCmd(cmd *cobra.Command, args []string) error {
+	cfg, _ := loadConfig()
+	db, err := schema.Open(cfg.DBPath)
+	if err != nil {
+		return fmt.Errorf("open db: %w", err)
+	}
+	defer db.Close()
+
+	eco, _ := cmd.Flags().GetString("ecosystem")
+	ver, _ := cmd.Flags().GetString("version")
+	name := args[0]
+
+	if err := schema.DeleteWhitelist(db, name, eco, ver); err != nil {
+		return fmt.Errorf("remove whitelist: %w", err)
+	}
+	fmt.Printf("Removed %s (%s) from whitelist\n", name, eco)
+	return nil
+}
+
+func allowListCmd(cmd *cobra.Command, args []string) error {
+	cfg, _ := loadConfig()
+	db, err := schema.OpenReadOnly(cfg.DBPath)
+	if err != nil {
+		return fmt.Errorf("open db: %w", err)
+	}
+	defer db.Close()
+
+	eco, _ := cmd.Flags().GetString("ecosystem")
+	query := "SELECT name, COALESCE(version, '(all)'), ecosystem FROM whitelist"
+	args2 := []interface{}{}
+	if eco != "" {
+		query += " WHERE ecosystem=?"
+		args2 = append(args2, eco)
+	}
+	query += " ORDER BY ecosystem, name"
+
+	rows, err := db.Query(query, args2...)
+	if err != nil {
+		return fmt.Errorf("query: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var name, version, ecosystem string
+		rows.Scan(&name, &version, &ecosystem)
+		fmt.Printf("  %s@%s [%s]\n", name, version, ecosystem)
+	}
+	return nil
 }

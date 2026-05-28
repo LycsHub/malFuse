@@ -12,6 +12,7 @@ type Request struct {
 type Result struct {
 	Block  bool
 	Reason string
+	Skip   bool
 }
 
 type CheckFunc func(ctx context.Context, req Request) Result
@@ -32,7 +33,7 @@ func (e *Engine) Check(ctx context.Context, req Request) Result {
 		default:
 		}
 		result := check(ctx, req)
-		if result.Block {
+		if result.Block || result.Skip {
 			return result
 		}
 	}

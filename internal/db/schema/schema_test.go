@@ -292,3 +292,62 @@ func TestOpenReadOnlyMissingFile(t *testing.T) {
 		t.Error("expected error for missing file")
 	}
 }
+
+func TestInsertAndIsWhitelisted(t *testing.T) {
+	dbPath := t.TempDir() + "/test.db"
+	db, _ := Open(dbPath)
+	defer db.Close()
+
+	InsertWhitelist(db, "my-pkg", "pypi", "1.0")
+	InsertWhitelist(db, "safe-lib", "npm", "")
+
+	found, _ := IsWhitelisted(db, "my-pkg", "pypi", "1.0")
+	if !found {
+		t.Error("expected my-pkg@1.0 to be whitelisted")
+	}
+	found, _ = IsWhitelisted(db, "safe-lib", "npm", "any")
+	if !found {
+		t.Error("expected safe-lib (no version) to match any version")
+	}
+	found, _ = IsWhitelisted(db, "evil-pkg", "pypi", "1.0")
+	if found {
+		t.Error("expected evil-pkg not to be whitelisted")
+	}
+}
+
+func TestDeleteWhitelist(t *testing.T) {
+	dbPath := t.TempDir() + "/test.db"
+	db, _ := Open(dbPath)
+	defer db.Close()
+
+	InsertWhitelist(db, "my-pkg", "pypi", "1.0")
+	InsertWhitelist(db, "my-pkg", "pypi", "")
+
+	// delete versionless entry
+	DeleteWhitelist(db, "my-pkg", "pypi", "")
+
+	// version 1.0 should still find the "1.0" entry
+	found, _ := IsWhitelisted(db, "my-pkg", "pypi", "1.0")
+	if !found {
+		t.Error("expected version 1.0 entry still present after deleting versionless")
+	}
+
+	// after deleting the specific version too, nothing should match
+	DeleteWhitelist(db, "my-pkg", "pypi", "1.0")
+	found, _ = IsWhitelisted(db, "my-pkg", "pypi", "1.0")
+	if found {
+		t.Error("expected no entries after deleting both")
+	}
+}
+
+func TestWhitelistTableExists(t *testing.T) {
+	dbPath := t.TempDir() + "/test.db"
+	db, _ := Open(dbPath)
+	defer db.Close()
+
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='whitelist'").Scan(&count)
+	if count != 1 {
+		t.Error("expected whitelist table to exist")
+	}
+}

@@ -68,6 +68,14 @@ func migrate(db *sql.DB) error {
 		last_commit TEXT NOT NULL DEFAULT '',
 		last_updated TEXT NOT NULL DEFAULT ''
 	);
+
+	CREATE TABLE IF NOT EXISTS whitelist (
+		name TEXT NOT NULL,
+		version TEXT,
+		ecosystem TEXT NOT NULL,
+		UNIQUE(name, ecosystem, version)
+	);
+	CREATE INDEX IF NOT EXISTS idx_whitelist_lookup ON whitelist(name, ecosystem, version);
 	`
 	_, err := db.Exec(ddl)
 	return err
@@ -152,4 +160,59 @@ func SetUpdateState(db DBExec, ecosystem, lastCommit, lastUpdated string) error 
 		ecosystem, lastCommit, lastUpdated,
 	)
 	return err
+}
+
+func InsertWhitelist(db DBExec, name, ecosystem, version string) error {
+	if version == "" {
+		db.Exec(`DELETE FROM whitelist WHERE name=? AND ecosystem=? AND version IS NULL`, name, ecosystem)
+	} else {
+		db.Exec(`DELETE FROM whitelist WHERE name=? AND ecosystem=? AND version=?`, name, ecosystem, version)
+	}
+
+	var ver interface{}
+	if version == "" {
+		ver = nil
+	} else {
+		ver = version
+	}
+	_, err := db.Exec(
+		`INSERT INTO whitelist (name, version, ecosystem) VALUES (?, ?, ?)`,
+		name, ver, ecosystem,
+	)
+	return err
+}
+
+func DeleteWhitelist(db DBExec, name, ecosystem, version string) error {
+	if version == "" {
+		_, err := db.Exec(
+			`DELETE FROM whitelist WHERE name=? AND ecosystem=? AND version IS NULL`,
+			name, ecosystem,
+		)
+		return err
+	}
+	_, err := db.Exec(
+		`DELETE FROM whitelist WHERE name=? AND ecosystem=? AND version=?`,
+		name, ecosystem, version,
+	)
+	return err
+}
+
+func IsWhitelisted(db DBExec, name, ecosystem, version string) (bool, error) {
+	var count int
+	var err error
+	if version == "" {
+		err = db.QueryRow(
+			`SELECT COUNT(*) FROM whitelist WHERE name=? AND ecosystem=?`,
+			name, ecosystem,
+		).Scan(&count)
+	} else {
+		err = db.QueryRow(
+			`SELECT COUNT(*) FROM whitelist WHERE name=? AND ecosystem=? AND (version=? OR version IS NULL)`,
+			name, ecosystem, version,
+		).Scan(&count)
+	}
+	if err != nil {
+		return false, fmt.Errorf("whitelist lookup: %w", err)
+	}
+	return count > 0, nil
 }

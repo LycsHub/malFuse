@@ -2,7 +2,7 @@
 
 `MalFuse` 是一款基于 **Go 语言** 开发的本地 HTTP 代理，在 `pip install` / `npm install` 等包安装过程中，于恶意代码落地前实施 **Inline Block（流式阻断）**。名字取自 **Mal**icious + **Fuse**（保险丝/熔断）。
 
-P0 + P1 已全部完成，P2 进行中。252,637 条恶意包记录，覆盖 11 个生态系统。
+P0 + P1 已全部完成，P2 进行中（白名单已实现）。252,637 条恶意包记录，覆盖 11 个生态系统。
 
 ---
 
@@ -152,16 +152,16 @@ sqlite3 malfuse.db "INSERT INTO malicious_packages VALUES ('bad-lib', NULL, 'npm
 |---|--------|--------|------|------|
 | 0 | **白名单** | SQLite `whitelist` 表 | 命中 → 直接 PASS，跳过所有后续检测 | 启用 |
 | 1 | **恶意包数据库** | SQLite `malicious_packages`（252,637 条） | 命中 → 403 Forbidden | 启用 |
-| 2 | **安全冷却期** | 上游 Registry 元数据（upload_time / created） | 包发布 < 48h → 403 | 关闭 |
+| 2 | **安全冷却期** | `malicious_packages.published`（OSV 报告时间戳） | 报告时间 < 48h → 403 | 关闭 |
 | 3 | **Typo-Squatting** | 内嵌 2790 流行包 + Levenshtein 编辑距离 | 名字相似 → 403 | 启用 |
-| 4 | **OSV 漏洞 API** | `api.osv.dev/v1/query` + 内存 TTL 缓存 | 已知漏洞 → 403 | 启用 |
+| 4 | **OSV 漏洞 API** | `api.osv.dev/v1/query` + 内存 TTL 缓存 | 命中且 `block_on_vuln=true` → 403 | 启用（不阻断） |
 | 5 | **流式脚本扫描** | TeeReader 边下边扫（tar/gzip 解包） | 恶意脚本 → 中断连接 | 关闭 |
 
 **故障策略：**
 - 白名单/typo — 无故障可能（纯内存/SQLite）
 - 恶意包DB — DB 缺失或损坏时跳过（日志 WARN）
-- 冷却期 — 元数据获取失败则阻断（fail-closed，宁可错杀）
-- OSV API — 网络不可达则放行（fail-open，不阻塞正常安装）
+- 冷却期 — 无 DB 或缺少 `published` 字段时跳过；依赖 DB 查询，无额外网络请求
+- OSV API — 网络不可达则放行（fail-open）；`block_on_vuln=false` 时仅日志记录漏洞数
 - 脚本扫描 — 解包/解析错误则放行（fail-open）
 
 **脚本扫描（#5）覆盖的投毒向量：**
@@ -207,8 +207,8 @@ $ curl http://127.0.0.1:8080/health
     "output": "stdout"
   },
   "routing": [
-    {"prefix": "/pypi/", "upstream": "https://pypi.org", "ecosystem": "pypi"},
-    {"prefix": "/npm/", "upstream": "https://registry.npmjs.org", "ecosystem": "npm"}
+    {"prefix": "/pypi/", "upstream": "https://pypi.tuna.tsinghua.edu.cn", "ecosystem": "pypi"},
+    {"prefix": "/npm/", "upstream": "https://registry.npmmirror.com", "ecosystem": "npm"}
   ],
   "cooldown": {
     "enabled": false,
@@ -220,6 +220,7 @@ $ curl http://127.0.0.1:8080/health
   },
   "osv": {
     "enabled": true,
+    "block_on_vuln": false,
     "ttl": "1h",
     "base_url": "https://api.osv.dev"
   },
@@ -248,9 +249,13 @@ $ curl http://127.0.0.1:8080/health
 | `routing` | `prefix` | URL 前缀，匹配请求路径 |
 | `routing` | `upstream` | 真实 Registry URL（代理内部走 HTTPS） |
 | `routing` | `ecosystem` | 生态标识（`pypi` / `npm`，用于 DB + OSV 查询） |
-| `cooldown` | `duration` | 冷却期时长，距发布时间小于此值则阻断 |
+| `cooldown` | `duration` | 冷却期时长，距 OSV 报告发布小于此值则阻断 |
+| `cooldown` | `enabled` | 默认关闭，需显式开启 |
 | `typo` | `threshold` | Levenshtein 编辑距离 ≤ 此值则阻断 |
+| `osv` | `block_on_vuln` | 发现漏洞时是否阻断（默认 `false`，仅日志记录） |
 | `osv` | `ttl` | 查询结果缓存时间 |
+| `osv` | `base_url` | OSV API 地址 |
+| `script_scan` | `enabled` | 默认关闭，需显式开启 |
 | `script_scan` | `max_file_size` | 单文件分析上限（字节），超出则跳过 |
 | `script_scan` | `max_total_size` | 流总大小上限，超出则停止扫描 |
 | `script_scan.entropy` | `threshold` | Shannon 熵阈值（4.5 = 英文文本上限附近） |

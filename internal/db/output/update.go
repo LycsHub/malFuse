@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +11,7 @@ import (
 
 	"malFuse/internal/db/ingest"
 	"malFuse/internal/db/schema"
+	"malFuse/internal/logger"
 )
 
 type fileState struct {
@@ -53,7 +53,7 @@ func RunUpdate(db *sql.DB, repoDir, mode, sqlOutput, repoProxy string) error {
 		}
 
 		if prevCommit == "" {
-			log.Printf("Full scan for ecosystem %s", eco)
+			logger.Info("full scan for ecosystem", "ecosystem", eco)
 			ecoDir := filepath.Join(repoDir, "osv", "malicious", eco)
 			files, err := ingest.ListFiles(ecoDir)
 			if err != nil {
@@ -80,7 +80,7 @@ func RunUpdate(db *sql.DB, repoDir, mode, sqlOutput, repoProxy string) error {
 		}
 
 		if len(addedFiles) == 0 && len(deletedFiles) == 0 {
-			log.Printf("No changes for ecosystem %s", eco)
+			logger.Info("no changes for ecosystem", "ecosystem", eco)
 			continue
 		}
 

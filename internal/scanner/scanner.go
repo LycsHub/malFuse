@@ -4,7 +4,8 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"io"
-	"log"
+
+	"malFuse/internal/logger"
 )
 
 type ScanConfig struct {
@@ -49,7 +50,7 @@ func scanTar(r io.Reader, cfg ScanConfig) ScanResult {
 			break
 		}
 		if err != nil {
-			log.Printf("[WARN] scanner: tar read error: %v", err)
+			logger.Warn("scanner: tar read error", "error", err)
 			return ScanResult{Block: false}
 		}
 		if hdr.Size > cfg.MaxFileSize {
@@ -163,5 +164,3 @@ func filename(path string) string {
 func hasExt(name, ext string) bool {
 	return len(name) > len(ext) && name[len(name)-len(ext):] == ext
 }
-
-var _ = log.Printf // keep import

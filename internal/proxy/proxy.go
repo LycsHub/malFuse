@@ -3,13 +3,13 @@ package proxy
 import (
 	"context"
 	"io"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
 
 	"malFuse/internal/engine"
+	"malFuse/internal/logger"
 )
 
 type Checker interface {
@@ -41,7 +41,7 @@ func (h *Handler) SetStreamChecker(sc engine.StreamChecker) {
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	matched, entry, prefix := h.matchRoute(r.URL.Path)
 	if !matched {
-		log.Printf("[WARN] no route matched for path: %s", r.URL.Path)
+		logger.Warn("no route matched", "path", r.URL.Path)
 		http.Error(w, "no route matched", http.StatusBadGateway)
 		return
 	}
@@ -57,7 +57,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if result.Block {
-		log.Printf("[BLOCKED] %s (reason: %s)", pkgName, result.Reason)
+		logger.Warn("package blocked", "package", pkgName, "reason", result.Reason)
 		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte(result.Reason))
 		return
@@ -108,7 +108,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, entry RouteEnt
 				defer pr.Close()
 				result := h.streamChecker.StreamCheck(engine.Request{}, pr)
 				if result.Block {
-					log.Printf("[BLOCKED] script scan (reason: %s)", result.Reason)
+					logger.Warn("script scan blocked", "reason", result.Reason)
 					cancel()
 				}
 			}()
@@ -132,7 +132,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, entry RouteEnt
 	}
 
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		log.Printf("[ERROR] upstream error: %v", err)
+		logger.Error("upstream error", "error", err)
 		http.Error(w, "upstream unreachable", http.StatusBadGateway)
 	}
 

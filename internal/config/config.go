@@ -11,6 +11,7 @@ type Config struct {
 	Host       string           `json:"host"`
 	DBPath     string           `json:"db_path"`
 	RepoProxy  string           `json:"repo_proxy"`
+	Logging    LoggingConfig    `json:"logging"`
 	Routing    []Route          `json:"routing"`
 	Cooldown   CooldownConfig   `json:"cooldown"`
 	Typo       TypoConfig       `json:"typo"`
@@ -87,6 +88,11 @@ func Default() *Config {
 		Port:   "8080",
 		Host:   "127.0.0.1",
 		DBPath: "malfuse.db",
+		Logging: LoggingConfig{
+			Level:  "info",
+			Format: "text",
+			Output: "stdout",
+		},
 		OSV: OSVConfig{
 			BaseURL: "https://api.osv.dev",
 		},
@@ -145,4 +151,10 @@ type ObfuscationConfig struct {
 type NetworkConfig struct {
 	Enabled         bool `json:"enabled"`
 	AllowPrivateIPs bool `json:"allow_private_ips"`
+}
+
+type LoggingConfig struct {
+	Level  string `json:"level"`
+	Format string `json:"format"`
+	Output string `json:"output"`
 }

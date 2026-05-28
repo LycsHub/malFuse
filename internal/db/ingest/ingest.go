@@ -3,10 +3,11 @@ package ingest
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"malFuse/internal/logger"
 )
 
 type ParsedPackage struct {
@@ -115,7 +116,7 @@ func ParseFiles(paths []string) ([]ParsedPackage, error) {
 	for _, path := range paths {
 		pkgs, err := ParseFile(path)
 		if err != nil {
-			log.Printf("[WARN] failed to parse %s: %v", path, err)
+			logger.Warn("failed to parse file", "path", path, "error", err)
 			continue
 		}
 		all = append(all, pkgs...)

@@ -4,13 +4,13 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
 	"malFuse/internal/config"
 	"malFuse/internal/db/output"
 	"malFuse/internal/db/schema"
+	"malFuse/internal/logger"
 )
 
 func main() {
@@ -21,15 +21,15 @@ func main() {
 	repoDir := flag.String("repo", "ossf-malicious-packages", "path to git repo directory")
 	flag.Parse()
 
+	logger.Init(logger.Config{Level: "info", Format: "text", Output: "stdout"})
+
 	if *mode != "direct" && *mode != "sql" {
-		log.Fatalf("invalid mode: %s (must be 'direct' or 'sql')", *mode)
+		logger.Fatal("invalid mode", "mode", *mode)
 	}
 
 	if *mode == "sql" && *sqlOutput == "" {
 		*sqlOutput = "updates-" + time.Now().Format("200601021504") + ".sql"
 	}
-
-	log.SetFlags(0)
 
 	repoProxy := ""
 	cfg, err := loadConfig(*configPath)
@@ -41,13 +41,13 @@ func main() {
 	if *mode == "direct" {
 		db, err = schema.Open(*dbPath)
 		if err != nil {
-			log.Fatalf("Failed to open database: %v", err)
+			logger.Fatal("failed to open database", "error", err)
 		}
 		defer db.Close()
 	}
 
 	if err := output.RunUpdate(db, *repoDir, *mode, *sqlOutput, repoProxy); err != nil {
-		log.Fatalf("Update failed: %v", err)
+		logger.Fatal("update failed", "error", err)
 	}
 
 	fmt.Println("Update complete.")

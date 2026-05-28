@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -16,6 +15,7 @@ import (
 	"malFuse/internal/config"
 	"malFuse/internal/db/schema"
 	"malFuse/internal/engine"
+	"malFuse/internal/logger"
 	"malFuse/internal/osv"
 	"malFuse/internal/proxy"
 	"malFuse/internal/scanner"
@@ -27,20 +27,26 @@ func main() {
 
 	data, err := os.ReadFile(*configPath)
 	if err != nil {
-		log.Fatalf("Failed to read config: %v", err)
+		logger.Fatal("failed to read config", "error", err)
 	}
 
 	cfg, err := config.Load(data)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		logger.Fatal("failed to load config", "error", err)
 	}
+
+	logger.Init(logger.Config{
+		Level:  cfg.Logging.Level,
+		Format: cfg.Logging.Format,
+		Output: cfg.Logging.Output,
+	})
 
 	routes := make(map[string]proxy.RouteEntry)
 	routesForEngine := make([]engine.RouteConfig, 0, len(cfg.Routing))
 	for _, r := range cfg.Routing {
 		upstreamURL, err := url.Parse(r.Upstream)
 		if err != nil {
-			log.Fatalf("Invalid upstream URL %s: %v", r.Upstream, err)
+			logger.Fatal("invalid upstream URL", "url", r.Upstream, "error", err)
 		}
 		routes[r.Prefix] = proxy.RouteEntry{
 			Upstream:  upstreamURL,
@@ -57,7 +63,7 @@ func main() {
 	if cfg.DBPath != "" {
 		malDB, err = schema.OpenReadOnly(cfg.DBPath)
 		if err != nil {
-			log.Printf("[WARN] Failed to open malicious database: %v", err)
+			logger.Warn("failed to open malicious database", "error", err)
 			malDB = nil
 		} else {
 			defer malDB.Close()
@@ -111,19 +117,19 @@ func main() {
 		sigCh := make(chan os.Signal, 1)
 		signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 		<-sigCh
-		log.Println("Shutting down gracefully...")
+		logger.Info("server shutting down")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		srv.Shutdown(ctx)
 	}()
 
-	log.Printf("malFuse listening on %s", addr)
+	logger.Info("malFuse listening", "addr", addr)
 	for prefix := range routes {
-		log.Printf("  %s -> %s", prefix, "upstream")
+		logger.Info("route configured", "prefix", prefix, "upstream", "upstream")
 	}
 
 	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-		log.Fatalf("Server error: %v", err)
+		logger.Fatal("server error", "error", err)
 	}
-	log.Println("Server stopped")
+	logger.Info("server stopped")
 }

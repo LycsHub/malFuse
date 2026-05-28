@@ -2,35 +2,27 @@
 
 `MalFuse` 是一款基于 **Go 语言** 开发的本地 HTTP 代理，在 `pip install` / `npm install` 等包安装过程中，于恶意代码落地前实施 **Inline Block（流式阻断）**。名字取自 **Mal**icious + **Fuse**（保险丝/熔断）。
 
----
-
-## 当前状态
-
-P0 + P1 已全部完成，P2 进行中：
-
-| 组件 | 说明 |
-|------|------|
-| `malfuse` | 本地 HTTP 代理（127.0.0.1:8080），5 层检测管道 + daemon + 健康检查 + 白名单 |
-| `malfuse-db` | 恶意包数据库管理 CLI，从 [ossf/malicious-packages](https://github.com/ossf/malicious-packages) 拉取 OSV 数据存入 SQLite |
-
-**数据库规模：** 252,637 条恶意包记录，覆盖 11 个生态系统。
+P0 + P1 已全部完成，P2 进行中。252,637 条恶意包记录，覆盖 11 个生态系统。
 
 ---
+
+# 使用
 
 ## 快速开始
 
 ```bash
-# 1. 生成恶意包数据库（需 git + 网络）
+# 1. 生成恶意包数据库
 ./malfuse-db --mode direct --db malfuse.db --repo ossf-malicious-packages
 
-# 2. 配置包管理器（一键）
+# 2. 配置包管理器
 ./malfuse link
 
 # 3. 启动代理
-./malfuse start                 # 后台 daemon 模式
-./malfuse -config config.json   # 或前台直接运行
+./malfuse start            # 后台 daemon 模式
+# 或
+./malfuse -config config.json  # 前台直接运行
 
-# 4. 安装依赖（走代理）
+# 4. 正常安装依赖（流量自动过代理）
 pip install requests
 npm install lodash
 ```
@@ -39,77 +31,131 @@ npm install lodash
 
 ## CLI 命令
 
+### `malfuse` — 代理 + 管理
+
 ```bash
-malfuse start                   # 后台启动 daemon
+# 运行
+malfuse                         # 前台运行（默认 config.json）
+malfuse -config /path/to/config.json  # 指定配置文件
+malfuse start                   # 后台 daemon 启动
 malfuse stop                    # 停止 daemon
 malfuse status                  # 查看运行状态
-malfuse link [--target pip|npm] # 配置包管理器
-malfuse unlink [--target pip]   # 还原包管理器配置
-malfuse allow add <pkg> --ecosystem pypi [--version 1.0]  # 添加白名单
-malfuse allow remove <pkg> --ecosystem npm                 # 移除白名单
-malfuse allow list [--ecosystem pypi]                      # 查看白名单
-malfuse -config config.json      # 前台直接运行
+
+# 包管理器配置
+malfuse link                    # 配置所有已安装的包管理器
+malfuse link --target pip       # 仅配置 pip
+malfuse link --target npm       # 仅配置 npm
+malfuse link --target pnpm      # 仅配置 pnpm
+malfuse link --target yarn      # 仅配置 yarn v1
+malfuse unlink                  # 还原所有
+malfuse unlink --target pip     # 仅还原 pip
+
+# 白名单管理
+malfuse allow add requests --ecosystem pypi              # 放行所有版本
+malfuse allow add lodash --ecosystem npm --version 4.17.21  # 放行特定版本
+malfuse allow remove requests --ecosystem pypi             # 移除白名单
+malfuse allow list                                         # 查看全部
+malfuse allow list --ecosystem npm                         # 按生态过滤
 ```
 
----
+### `malfuse-db` — 数据库管理
 
-## 检测管道（顺序执行，任一命中即停止）
+```bash
+# 直接写入 SQLite（在线使用）
+malfuse-db --mode direct --db malfuse.db --repo ossf-malicious-packages
 
-| # | 检测项 | 数据源 | 失败策略 | 默认 |
-|---|--------|--------|----------|------|
-| 0 | **白名单** | SQLite whitelist 表 | — | 启用 |
-| 1 | **恶意包数据库** | SQLite（252,637 条） | 无 DB 则跳过 | 启用 |
-| 2 | **安全冷却期** | 上游 Registry 元数据时间戳 | fail-closed（阻断） | 关闭 |
-| 3 | **Typo-Squatting** | 内嵌 2790 流行包 + Levenshtein | — | 启用 |
-| 4 | **OSV API** | 实时漏洞查询 + 内存 TTL 缓存 | fail-open（放行） | 启用 |
-| 5 | **流式脚本扫描** | TeeReader 边下边扫 | fail-open（放行） | 关闭 |
+# 生成 SQL 增量文件（离线/air-gapped 环境使用）
+malfuse-db --mode sql --output updates-20260527.sql --repo ossf-malicious-packages
 
-管道之外还有 `/health` 健康检查端点（`GET /health → {"status":"ok","db":true,"uptime":"2h34m"}`）。
+# 指定配置（读取 repo_proxy 用于 GitHub 加速）
+malfuse-db --config config.json --mode direct
+```
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--mode` | `direct` | `direct` 直接写 SQLite / `sql` 生成增量 SQL 文件 |
+| `--db` | `malfuse.db` | SQLite 数据库路径 |
+| `--repo` | `ossf-malicious-packages` | git 仓库缓存目录 |
+| `--output` | `updates-YYYYMMDDHHmm.sql` | SQL 输出路径（仅 sql 模式） |
+| `--config` | `config.json` | 配置文件路径（读取 `repo_proxy` 代理设置） |
+
+**更新机制：** 首次运行执行全量扫描（克隆 + 解析所有 OSV JSON）。后续运行通过 `git fetch` + `git diff --name-status` 仅处理增量变更，秒级完成。
+
+**输出说明：** `direct` 模式写入 `malfuse.db`（WAL 模式，可被代理同时读取）。`sql` 模式生成 `INSERT OR REPLACE` + `DELETE` 语句，可导入到无网络环境的数据库。
 
 ---
 
 ## 包管理器配置
 
-| 工具 | 一键配置 | 手动配置文档 |
-|------|---------|-------------|
-| pip | `malfuse link --target pip` | — |
-| npm | `malfuse link --target npm` | — |
-| pnpm | `malfuse link --target pnpm` | — |
-| yarn v1 | `malfuse link --target yarn` | — |
-| yarn v2+ | — | [docs/yarn-v2-config.md](docs/yarn-v2-config.md) |
-| uv | — | [docs/uv-config.md](docs/uv-config.md) |
-| poetry | — | [docs/poetry-config.md](docs/poetry-config.md) |
-| conda | — | [docs/conda-config.md](docs/conda-config.md) |
+### 一键配置（`malfuse link`）
 
-还原：`malfuse unlink`
+| 工具 | 命令 | 实际执行的配置 |
+|------|------|---------------|
+| pip | `malfuse link --target pip` | `pip config set global.index-url http://127.0.0.1:8080/pypi/simple/` |
+| npm | `malfuse link --target npm` | `npm config set registry http://127.0.0.1:8080/npm/` |
+| pnpm | `malfuse link --target pnpm` | `pnpm config set registry http://127.0.0.1:8080/npm/` |
+| yarn v1 | `malfuse link --target yarn` | `yarn config set registry http://127.0.0.1:8080/npm/` |
+
+`malfuse link` 会备份原始值到 `~/.malfuse_backup.json`，`malfuse unlink` 从备份还原全部配置。
+
+### 手动配置
+
+以下工具不支持 CLI 配置命令，需手动操作：
+
+| 工具 | 文档 |
+|------|------|
+| yarn v2+ (Berry) | [docs/yarn-v2-config.md](docs/yarn-v2-config.md) |
+| uv | [docs/uv-config.md](docs/uv-config.md) |
+| poetry | [docs/poetry-config.md](docs/poetry-config.md) |
+| conda | [docs/conda-config.md](docs/conda-config.md) |
 
 ---
 
-## 目录结构
+## 检测管道
 
+每个安装请求依次通过 6 层检测（含白名单），任一命中即停止后续检查：
+
+| # | 检测项 | 数据源 | 结果 | 默认 |
+|---|--------|--------|------|------|
+| 0 | **白名单** | SQLite `whitelist` 表 | 命中 → 直接 PASS，跳过所有后续检测 | 启用 |
+| 1 | **恶意包数据库** | SQLite `malicious_packages`（252,637 条） | 命中 → 403 Forbidden | 启用 |
+| 2 | **安全冷却期** | 上游 Registry 元数据（upload_time / created） | 包发布 < 48h → 403 | 关闭 |
+| 3 | **Typo-Squatting** | 内嵌 2790 流行包 + Levenshtein 编辑距离 | 名字相似 → 403 | 启用 |
+| 4 | **OSV 漏洞 API** | `api.osv.dev/v1/query` + 内存 TTL 缓存 | 已知漏洞 → 403 | 启用 |
+| 5 | **流式脚本扫描** | TeeReader 边下边扫（tar/gzip 解包） | 恶意脚本 → 中断连接 | 关闭 |
+
+**故障策略：**
+- 白名单/typo — 无故障可能（纯内存/SQLite）
+- 恶意包DB — DB 缺失或损坏时跳过（日志 WARN）
+- 冷却期 — 元数据获取失败则阻断（fail-closed，宁可错杀）
+- OSV API — 网络不可达则放行（fail-open，不阻塞正常安装）
+- 脚本扫描 — 解包/解析错误则放行（fail-open）
+
+**脚本扫描（#5）覆盖的投毒向量：**
+
+| JS 生态 | Python 生态 |
+|---------|------------|
+| `package.json` `scripts.preinstall/postinstall/install` | `setup.py` 全文 |
+| `package.json` `scripts` 中引用的 `.js` 文件 | `__init__.py` 全文 |
+| 独立 `.js` 文件 | `.pth` 文件 `import` 行 |
+| — | `pyproject.toml` `build-system.build-backend` |
+
+每个向量经三检测器判定：**Shannon 信息熵**（阈值 4.5）、**代码混淆**（base64/hex/eval 链）、**外连检测**（URL/IP）。
+
+---
+
+## /health 健康检查
+
+```bash
+$ curl http://127.0.0.1:8080/health
+{"db":true,"status":"ok","uptime":"2h34m5s"}
 ```
-malFuse/
-├── main.go                    # malfuse 代理入口（cobra CLI）
-├── config.json                # 配置文件
-├── cmd/
-│   └── malfuse-db/            # 数据库管理 CLI 入口
-├── internal/
-│   ├── config/                # JSON 配置加载
-│   ├── proxy/                 # HTTP 代理层（路由、转发、health）
-│   ├── engine/                # 检测管道 + 白名单
-│   ├── scanner/               # 流式脚本扫描（熵/混淆/外连 + JS/Python 解析）
-│   ├── osv/                   # OSV API 客户端 + TTL 缓存
-│   ├── logger/                # logrus 结构化日志
-│   ├── daemon/                # 后台进程管理（PID、信号）
-│   ├── linker/                # 包管理器配置联动
-│   └── db/
-│       ├── schema/            # SQLite DDL + WAL
-│       ├── ingest/            # OSV JSON 解析 + Git 操作
-│       └── output/            # 直接写库 / SQL 增量文件
-├── docs/                      # 手动配置文档
-├── malfuse.db                 # SQLite 数据库
-└── ossf-malicious-packages/   # Git 仓库缓存
-```
+
+| 字段 | 说明 |
+|------|------|
+| `status` | `ok`（正常）或 `degraded`（DB 不可用） |
+| `db` | SQLite 连接是否正常 |
+| `uptime` | 代理进程运行时长 |
 
 ---
 
@@ -122,14 +168,28 @@ malFuse/
   "db_path": "malfuse.db",
   "pid_file": "malfuse.pid",
   "repo_proxy": "ghfast.top",
-  "logging": { "level": "info", "format": "text", "output": "stdout" },
+  "logging": {
+    "level": "info",
+    "format": "text",
+    "output": "stdout"
+  },
   "routing": [
     {"prefix": "/pypi/", "upstream": "https://pypi.org", "ecosystem": "pypi"},
     {"prefix": "/npm/", "upstream": "https://registry.npmjs.org", "ecosystem": "npm"}
   ],
-  "cooldown": { "enabled": false, "duration": "48h" },
-  "typo": { "enabled": true, "threshold": 2 },
-  "osv": { "enabled": true, "ttl": "1h", "base_url": "https://api.osv.dev" },
+  "cooldown": {
+    "enabled": false,
+    "duration": "48h"
+  },
+  "typo": {
+    "enabled": true,
+    "threshold": 2
+  },
+  "osv": {
+    "enabled": true,
+    "ttl": "1h",
+    "base_url": "https://api.osv.dev"
+  },
   "script_scan": {
     "enabled": false,
     "max_file_size": 5242880,
@@ -141,13 +201,29 @@ malFuse/
 }
 ```
 
-| 字段 | 说明 |
-|------|------|
-| `repo_proxy` | GitHub 加速代理，不填则不使用 |
-| `db_path` | DB 不存在时自动跳过数据库检测 |
-| `pid_file` | daemon 模式 PID 文件路径 |
-| `logging` | 日志级别/格式/输出（text/json，stdout/文件） |
-| `script_scan` | 流式脚本扫描（默认关闭，opt-in） |
+**配置项说明：**
+
+| 配置节 | 字段 | 说明 |
+|--------|------|------|
+| 基础 | `port` / `host` | 代理监听地址 |
+| 基础 | `db_path` | SQLite 路径，不存在时自动跳过数据库检测 |
+| 基础 | `pid_file` | daemon 模式 PID 文件路径（默认 `malfuse.pid`） |
+| 基础 | `repo_proxy` | GitHub 加速代理域名（如 `ghfast.top`），不填不代理 |
+| `logging` | `level` | `debug` / `info` / `warn` / `error` |
+| `logging` | `format` | `text` 或 `json`（JSON 适用于日志采集系统） |
+| `logging` | `output` | `stdout` 或文件路径（文件模式下同时输出 stdout + 文件） |
+| `routing` | `prefix` | URL 前缀，匹配请求路径 |
+| `routing` | `upstream` | 真实 Registry URL（代理内部走 HTTPS） |
+| `routing` | `ecosystem` | 生态标识（`pypi` / `npm`，用于 DB + OSV 查询） |
+| `cooldown` | `duration` | 冷却期时长，距发布时间小于此值则阻断 |
+| `typo` | `threshold` | Levenshtein 编辑距离 ≤ 此值则阻断 |
+| `osv` | `ttl` | 查询结果缓存时间 |
+| `script_scan` | `max_file_size` | 单文件分析上限（字节），超出则跳过 |
+| `script_scan` | `max_total_size` | 流总大小上限，超出则停止扫描 |
+| `script_scan.entropy` | `threshold` | Shannon 熵阈值（4.5 = 英文文本上限附近） |
+| `script_scan.obfuscation` | `base64_min_length` | 触发检测的 base64 字符串最小长度 |
+| `script_scan.obfuscation` | `hex_min_length` | 触发检测的连续 `\xNN` 最小次数 |
+| `script_scan.network` | `allow_private_ips` | 是否放行内网 IP（如 `10.x`、`192.168.x`） |
 
 ---
 
@@ -158,9 +234,50 @@ CGO_ENABLED=0 go build -o malfuse .
 CGO_ENABLED=0 go build -o malfuse-db ./cmd/malfuse-db/
 ```
 
-纯 Go 实现，无 CGo 依赖，交叉编译生成 Linux/macOS/Windows 纯净二进制。
+纯 Go，零 CGo 依赖，一处编译可在 Linux / macOS (Intel + Apple Silicon) / Windows 运行。
 
 ---
+
+# 开发
+
+## 目录结构
+
+```
+malFuse/
+├── main.go                    # malfuse 代理入口（cobra CLI）
+├── config.json                # 配置文件
+├── cmd/
+│   └── malfuse-db/            # 数据库管理 CLI 入口
+├── internal/
+│   ├── config/                # JSON 配置加载 + 验证
+│   ├── proxy/                 # HTTP 代理层（路由匹配、上游转发、health）
+│   ├── engine/                # 检测管道（白名单、恶意库、冷却期、typo、OSV） + StreamChecker 接口
+│   ├── scanner/               # 流式脚本扫描（熵值/混淆/外连 + JS/Python 结构解析）
+│   ├── osv/                   # OSV API 客户端 + 内存 TTL 缓存
+│   ├── logger/                # logrus 结构化日志封装
+│   ├── daemon/                # 后台进程管理（PID 文件、信号）
+│   ├── linker/                # 包管理器配置联动（pip/npm/pnpm/yarn）
+│   └── db/
+│       ├── schema/            # SQLite DDL + CRUD（WAL 模式，DBExec 接口）
+│       ├── ingest/            # OSV JSON 1.5.0 解析 + Git 操作
+│       └── output/            # 直接写库 / SQL 增量文件生成
+├── docs/                      # 手动配置文档
+├── malfuse.db                 # SQLite 数据库（由 malfuse-db 生成）
+└── ossf-malicious-packages/   # Git 仓库缓存（gitignore）
+```
+
+## 运行测试
+
+```bash
+# 所有单元测试 + 集成测试
+go test ./internal/...
+
+# 指定包
+go test -v ./internal/scanner/
+go test -v ./internal/engine/
+```
+
+当前 110+ 个测试，覆盖全部包。
 
 ## 实现路线 (Roadmap)
 
@@ -188,14 +305,15 @@ CGO_ENABLED=0 go build -o malfuse-db ./cmd/malfuse-db/
 - [ ] CI/CD Pipeline（lint、test、build、release）
 - [ ] 安装脚本 AST 语法分析
 
----
-
 ## 技术栈
 
-- **Go 1.19+** stdlib 为主
-- **github.com/spf13/cobra** — CLI 框架
-- **github.com/sirupsen/logrus** — 结构化日志
-- **modernc.org/sqlite** — 纯 Go SQLite，零 CGo
-- **net/http/httputil.ReverseProxy** — HTTP 代理转发
-- **OSV Schema 1.5.0** — 恶意包报告格式
-- **Levenshtein 编辑距离** — Typo-Squatting 检测
+| 组件 | 库 |
+|------|-----|
+| CLI 框架 | `github.com/spf13/cobra` |
+| 结构化日志 | `github.com/sirupsen/logrus` |
+| SQLite | `modernc.org/sqlite`（纯 Go，零 CGo） |
+| HTTP 代理 | `net/http/httputil.ReverseProxy`（stdlib） |
+| 恶意包数据格式 | [OSV Schema 1.5.0](https://ossf.github.io/osv-schema/) |
+| Typo 检测 | 自实现 Levenshtein 编辑距离 |
+| 信息熵 | 自实现 Shannon Entropy |
+| 混淆检测 | regexp（stdlib） |

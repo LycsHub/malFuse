@@ -69,7 +69,7 @@ func (c *Client) queryAPI(ctx context.Context, name, ecosystem, version string) 
 	reqBody := queryRequest{
 		Package: packageRef{
 			Name:      name,
-			Ecosystem: ecosystem,
+			Ecosystem: osvEcosystemName(ecosystem),
 		},
 		Version: version,
 	}
@@ -153,6 +153,15 @@ func (c *cache) set(key string, result Result) {
 	c.entries[key] = cacheEntry{
 		result:    result,
 		expiresAt: time.Now().Add(c.ttl),
+	}
+}
+
+func osvEcosystemName(eco string) string {
+	switch eco {
+	case "pypi":
+		return "PyPI"
+	default:
+		return eco
 	}
 }
 

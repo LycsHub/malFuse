@@ -26,9 +26,24 @@ P0 核心骨架已实现，包含两个二进制：
 # 2. 启动代理
 ./malfuse -config config.json
 
-# 3. 使用 pip 安装（将 registry 指向本地代理）
-pip install --index-url http://127.0.0.1:8080/pypi/simple/ requests
+# 3. 配置包管理器（一键）
+./malfuse link
 ```
+
+## 包管理器配置
+
+| 工具 | 一键配置 | 手动配置文档 |
+|------|---------|-------------|
+| pip | `malfuse link --target pip` | — |
+| npm | `malfuse link --target npm` | — |
+| pnpm | `malfuse link --target pnpm` | — |
+| yarn v1 | `malfuse link --target yarn` | — |
+| yarn v2+ | — | [docs/yarn-v2-config.md](docs/yarn-v2-config.md) |
+| uv | — | [docs/uv-config.md](docs/uv-config.md) |
+| poetry | — | [docs/poetry-config.md](docs/poetry-config.md) |
+| conda | — | [docs/conda-config.md](docs/conda-config.md) |
+
+还原：`malfuse unlink`
 
 ---
 

@@ -9,8 +9,10 @@ func TestSaveRestoreBackup(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	b := &Backup{
-		PipOriginal: "https://pypi.org/simple/",
-		NpmOriginal: "https://registry.npmjs.org/",
+		PipOriginal:  "https://pypi.org/simple/",
+		NpmOriginal:  "https://registry.npmjs.org/",
+		PnpmOriginal: "https://registry.npmjs.org/",
+		YarnOriginal: "https://registry.yarnpkg.com/",
 	}
 
 	if err := saveBackup(path, b); err != nil {
@@ -23,6 +25,12 @@ func TestSaveRestoreBackup(t *testing.T) {
 	}
 	if loaded.PipOriginal != b.PipOriginal {
 		t.Errorf("expected PipOriginal %s, got %s", b.PipOriginal, loaded.PipOriginal)
+	}
+	if loaded.PnpmOriginal != b.PnpmOriginal {
+		t.Errorf("expected PnpmOriginal %s, got %s", b.PnpmOriginal, loaded.PnpmOriginal)
+	}
+	if loaded.YarnOriginal != b.YarnOriginal {
+		t.Errorf("expected YarnOriginal %s, got %s", b.YarnOriginal, loaded.YarnOriginal)
 	}
 }
 

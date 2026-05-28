@@ -26,8 +26,10 @@ func (c LinkConfig) NpmURL() string {
 }
 
 type Backup struct {
-	PipOriginal string `json:"pip_original"`
-	NpmOriginal string `json:"npm_original"`
+	PipOriginal   string `json:"pip_original"`
+	NpmOriginal   string `json:"npm_original"`
+	PnpmOriginal  string `json:"pnpm_original"`
+	YarnOriginal  string `json:"yarn_original"`
 }
 
 func Link(config LinkConfig, which string) error {
@@ -63,6 +65,30 @@ func Link(config LinkConfig, which string) error {
 		logger.Info("npm configured", "url", config.NpmURL())
 	}
 
+	if which == "" || which == "pnpm" {
+		out, _ := exec.Command("pnpm", "config", "get", "registry").Output()
+		if backup.PnpmOriginal == "" {
+			backup.PnpmOriginal = cleanOutput(out)
+		}
+		cmd := exec.Command("pnpm", "config", "set", "registry", config.NpmURL())
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("pnpm config set: %w", err)
+		}
+		logger.Info("pnpm configured", "url", config.NpmURL())
+	}
+
+	if which == "" || which == "yarn" {
+		out, _ := exec.Command("yarn", "config", "get", "registry").Output()
+		if backup.YarnOriginal == "" {
+			backup.YarnOriginal = cleanOutput(out)
+		}
+		cmd := exec.Command("yarn", "config", "set", "registry", config.NpmURL())
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("yarn config set: %w", err)
+		}
+		logger.Info("yarn configured", "url", config.NpmURL())
+	}
+
 	return saveBackup(backupPath, backup)
 }
 
@@ -91,7 +117,25 @@ func Unlink(which string) error {
 		backup.NpmOriginal = ""
 	}
 
-	if backup.PipOriginal == "" && backup.NpmOriginal == "" {
+	if (which == "" || which == "pnpm") && backup.PnpmOriginal != "" {
+		cmd := exec.Command("pnpm", "config", "set", "registry", backup.PnpmOriginal)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("pnpm unlink: %w", err)
+		}
+		logger.Info("pnpm restored", "url", backup.PnpmOriginal)
+		backup.PnpmOriginal = ""
+	}
+
+	if (which == "" || which == "yarn") && backup.YarnOriginal != "" {
+		cmd := exec.Command("yarn", "config", "set", "registry", backup.YarnOriginal)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("yarn unlink: %w", err)
+		}
+		logger.Info("yarn restored", "url", backup.YarnOriginal)
+		backup.YarnOriginal = ""
+	}
+
+	if backup.PipOriginal == "" && backup.NpmOriginal == "" && backup.PnpmOriginal == "" && backup.YarnOriginal == "" {
 		os.Remove(backupPath)
 		return nil
 	}

@@ -111,6 +111,39 @@ malfuse-db --config config.json --mode direct
 
 ---
 
+## 阻断粒度说明
+
+不同包管理器的代理行为不同，因此版本匹配的精度也不同：
+
+| 生态 | 粒度 | 机制 |
+|------|------|------|
+| **PyPI (pip)** | 版本精确 | Simple API 仅阻断 `version=NULL` 的条目。代理自动重写 HTML 中的下载链接，pip 下载 tarball 时返回代理，触发精确版本匹配 |
+| **npm** | 包级别（全阻断） | npm 的 `pacote` 下载库绕过代理缓存，无法在下载阶段精确匹配。仅 `version=NULL` 的条目在 Simple API 阶段 403 阻断 |
+
+### npm 版本精确阻断方案
+
+如果需要 npm 版本级别的控制，使用白名单配合全阻断：
+
+```bash
+# 1. 标记包为全阻断（version=NULL）
+sqlite3 malfuse.db "INSERT INTO malicious_packages VALUES ('bad-lib', NULL, 'npm', '', '');"
+
+# 2. 将安全版本加入白名单
+./malfuse allow add bad-lib --ecosystem npm --version 2.0.5
+```
+
+这样 `npm install bad-lib@2.0.5` 正常通过，其他版本全部阻断。
+
+### 阻断行为对照表
+
+| 场景 | pip | npm |
+|------|-----|-----|
+| DB 中 `version=NULL` | 所有版本阻断 | 所有版本阻断 |
+| DB 中 `version="1.0"`, 安装 1.0 | 阻断（下载时精确匹配） | 阻断（全阻断，除非白名单放行） |
+| DB 中 `version="1.0"`, 安装 2.0 | 放行 | 阻断（全阻断，除非白名单放行） |
+
+---
+
 ## 检测管道
 
 每个安装请求依次通过 6 层检测（含白名单），任一命中即停止后续检查：

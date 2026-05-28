@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -84,11 +85,11 @@ func (c *Client) queryAPI(ctx context.Context, name, ecosystem, version string) 
 		return Result{}, fmt.Errorf("build URL: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, queryURL+"?package.name="+url.QueryEscape(name)+"&package.ecosystem="+url.QueryEscape(ecosystem), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, queryURL, strings.NewReader(string(bodyJSON)))
 	if err != nil {
 		return Result{}, fmt.Errorf("create request: %w", err)
 	}
-	_ = bodyJSON // keep for POST if needed
+	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {

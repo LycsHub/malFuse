@@ -948,8 +948,8 @@ humanize-duration
 humanize-ms
 husky
 hypothesis
-ibm-db
 ibm_db
+ibm-db
 iconv-lite
 idiomorph
 idna
@@ -1279,9 +1279,9 @@ loopback
 loose-envify
 lottie-web
 loud-rejection
+lru_map
 lru-cache
 lru-queue
-lru_map
 ltcdr
 lucid
 luigi
@@ -1714,7 +1714,10 @@ pinkie
 pinkie-promise
 pino
 pino-pretty
+pip
 pip-audit
+pip-tools
+pipenv
 pirates
 pixelfed
 pixelmatch

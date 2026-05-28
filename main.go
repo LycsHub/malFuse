@@ -17,6 +17,7 @@ import (
 	"malFuse/internal/daemon"
 	"malFuse/internal/db/schema"
 	"malFuse/internal/engine"
+	"malFuse/internal/linker"
 	"malFuse/internal/logger"
 	"malFuse/internal/osv"
 	"malFuse/internal/proxy"
@@ -44,6 +45,14 @@ func main() {
 		Short: "Check daemon status",
 		RunE:  statusCmd,
 	})
+
+	linkCmd := &cobra.Command{Use: "link", Short: "Configure pip/npm to use malFuse proxy", RunE: linkCmdFn}
+	linkCmd.Flags().String("target", "", "package manager: pip, npm, or empty for both")
+	rootCmd.AddCommand(linkCmd)
+
+	unlinkCmd := &cobra.Command{Use: "unlink", Short: "Restore original pip/npm configuration", RunE: unlinkCmdFn}
+	unlinkCmd.Flags().String("target", "", "package manager: pip, npm, or empty for both")
+	rootCmd.AddCommand(unlinkCmd)
 
 	rootCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		return runProxy()
@@ -230,4 +239,23 @@ func runProxyWithConfig(cfg *config.Config) error {
 		return fmt.Errorf("server error: %w", err)
 	}
 	return nil
+}
+
+func linkCmdFn(cmd *cobra.Command, args []string) error {
+	cfg, err := loadConfig()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	target, _ := cmd.Flags().GetString("target")
+	return linker.Link(linker.LinkConfig{
+		ProxyHost:    cfg.Host,
+		ProxyPort:    cfg.Port,
+		PypiUpstream: "https://pypi.org/simple/",
+		NpmUpstream:  "https://registry.npmjs.org/",
+	}, target)
+}
+
+func unlinkCmdFn(cmd *cobra.Command, args []string) error {
+	target, _ := cmd.Flags().GetString("target")
+	return linker.Unlink(target)
 }

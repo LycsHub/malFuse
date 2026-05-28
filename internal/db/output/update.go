@@ -31,7 +31,6 @@ func RunUpdate(db *sql.DB, repoDir, mode, sqlOutput, repoProxy string) error {
 		return fmt.Errorf("fetch repo: %w", err)
 	}
 
-	// Checkout OSV files from origin/main so diff'd files exist locally
 	if err := ingest.CheckoutOSV(repoDir); err != nil {
 		return fmt.Errorf("checkout osv: %w", err)
 	}
@@ -40,6 +39,9 @@ func RunUpdate(db *sql.DB, repoDir, mode, sqlOutput, repoProxy string) error {
 	if err != nil {
 		return fmt.Errorf("discover ecosystems: %w", err)
 	}
+
+	var allNew, allDeleted []ingest.ParsedPackage
+	skippedEcosystems := 0
 
 	for _, eco := range ecosystems {
 		prevCommit := getPrevCommit(db, repoDir, eco)
@@ -53,7 +55,6 @@ func RunUpdate(db *sql.DB, repoDir, mode, sqlOutput, repoProxy string) error {
 		}
 
 		if prevCommit == "" {
-			logger.Info("full scan for ecosystem", "ecosystem", eco)
 			ecoDir := filepath.Join(repoDir, "osv", "malicious", eco)
 			files, err := ingest.ListFiles(ecoDir)
 			if err != nil {
@@ -80,8 +81,12 @@ func RunUpdate(db *sql.DB, repoDir, mode, sqlOutput, repoProxy string) error {
 		}
 
 		if len(addedFiles) == 0 && len(deletedFiles) == 0 {
-			logger.Info("no changes for ecosystem", "ecosystem", eco)
+			skippedEcosystems++
 			continue
+		}
+
+		if prevCommit == "" {
+			logger.Info("scanning ecosystem", "ecosystem", eco, "files", len(addedFiles))
 		}
 
 		newPkgs, _ := ingest.ParseFiles(addedFiles)
@@ -98,10 +103,11 @@ func RunUpdate(db *sql.DB, repoDir, mode, sqlOutput, repoProxy string) error {
 			}
 		}
 
+		allNew = append(allNew, newPkgs...)
+		allDeleted = append(allDeleted, deletedPkgs...)
+
 		if mode == "sql" {
-			if err := WriteSQLFile(sqlOutput, newPkgs, deletedPkgs); err != nil {
-				return err
-			}
+			// Accumulated below
 		} else {
 			if len(deletedPkgs) > 0 {
 				if err := DeletePackages(db, deletedPkgs); err != nil {
@@ -113,10 +119,23 @@ func RunUpdate(db *sql.DB, repoDir, mode, sqlOutput, repoProxy string) error {
 					return err
 				}
 			}
+			logger.Info("ecosystem updated", "ecosystem", eco,
+				"added", len(newPkgs), "deleted", len(deletedPkgs))
 		}
 
 		savePrevCommit(db, repoDir, eco, remoteHash)
 	}
+
+	if mode == "sql" && (len(allNew) > 0 || len(allDeleted) > 0) {
+		if err := WriteSQLFile(sqlOutput, allNew, allDeleted); err != nil {
+			return err
+		}
+	}
+
+	if skippedEcosystems > 0 {
+		logger.Info("up to date", "ecosystems", skippedEcosystems)
+	}
+	logger.Info("update summary", "added", len(allNew), "deleted", len(allDeleted))
 
 	return nil
 }

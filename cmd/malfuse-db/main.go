@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"flag"
-	"fmt"
 	"os"
 	"time"
 
@@ -49,8 +48,6 @@ func main() {
 	if err := output.RunUpdate(db, *repoDir, *mode, *sqlOutput, repoProxy); err != nil {
 		logger.Fatal("update failed", "error", err)
 	}
-
-	fmt.Println("Update complete.")
 }
 
 func loadConfig(path string) (*config.Config, error) {

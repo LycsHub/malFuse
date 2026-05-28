@@ -3,4 +3,5 @@
 .idea
 ossf-malicious-packages/
 malfuse-db
-malfuse.db
+malfuse.dbconfig_bak.json
+malfuse

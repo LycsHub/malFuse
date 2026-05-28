@@ -115,6 +115,35 @@ CGO_ENABLED=0 go build -o malfuse-db ./cmd/malfuse-db/
 
 ---
 
+## 实现路线 (Roadmap)
+
+### ✅ P0 — 核心骨架（已完成）
+
+- [x] HTTP 反向代理 + 路由匹配
+- [x] 恶意包 SQLite 数据库（252,637 条，11 个生态系统）
+- [x] `malfuse-db` CLI（git 增量爬取 + SQL 离线模式）
+- [x] 4 层检测管道（malicious-db / cooldown / typo / OSV）
+- [x] 流式脚本扫描器（熵值 + 混淆 + 外连检测）
+- [x] package.json scripts 解析 + Python .pth / pyproject.toml 检测
+
+### 🟡 P1 — 自动化与运维
+
+- [ ] `malfuse link` / `malfuse unlink` 自动配置 pip/npm 代理
+- [ ] 结构化日志（级别控制、JSON 格式、文件输出）
+- [ ] `/health` 健康检查端点
+- [ ] 后台 daemon 模式（systemd / launchd）
+- [ ] 端到端集成测试套件
+
+### 🟢 P2 — 深度扫描与生态扩展
+
+- [ ] 更多生态路由（RubyGems、NuGet、Crates.io、Go modules）
+- [ ] `malfuse allow` 白名单管理
+- [ ] Docker 镜像分发
+- [ ] CI/CD Pipeline（lint、test、build、release）
+- [ ] 安装脚本 AST 语法分析
+
+---
+
 ## 技术栈
 
 - **Go 1.19+** stdlib 为主

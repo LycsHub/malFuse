@@ -1,8 +1,10 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
@@ -128,6 +130,18 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, entry RouteEnt
 			"path", r.URL.Path,
 		)
 
+		// Rewrite download URLs in Simple API response to route through proxy
+		if isHTML(resp.Header.Get("Content-Type")) && strings.Contains(r.URL.Path, "/simple/") {
+			body, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err == nil {
+				rewritten := rewriteURLs(string(body), entry.Upstream.String())
+				resp.Body = io.NopCloser(strings.NewReader(rewritten))
+				resp.ContentLength = int64(len(rewritten))
+				resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(rewritten)))
+			}
+		}
+
 		if h.streamChecker != nil && isArchive(resp.Header.Get("Content-Type")) {
 			ctx, cancel := context.WithCancel(resp.Request.Context())
 			pr, pw := io.Pipe()
@@ -201,9 +215,20 @@ func (h *Handler) matchingPrefix(path string) string {
 
 func extractPyPIPackageName(path string) (string, bool) {
 	parts := strings.Split(strings.Trim(path, "/"), "/")
+	// Simple API: /simple/<package>/
 	if len(parts) >= 2 && parts[0] == "simple" {
 		name := strings.ToLower(parts[1])
 		return name, name != ""
+	}
+	// Download URL: /packages/.../<package>-<version>.tar.gz
+	if len(parts) >= 2 && parts[0] == "packages" {
+		// Get the last part which is <package>-<version>.ext
+		last := parts[len(parts)-1]
+		// Extract package name: everything before the last version-like segment
+		if idx := strings.LastIndex(last, "-"); idx >= 0 {
+			name := strings.ToLower(last[:idx])
+			return name, name != ""
+		}
 	}
 	return "", false
 }
@@ -316,4 +341,18 @@ func (h *Handler) handleHealth(w http.ResponseWriter) {
 	}
 
 	json.NewEncoder(w).Encode(resp)
+}
+
+func isHTML(ct string) bool {
+	return strings.Contains(strings.ToLower(ct), "text/html")
+}
+
+func rewriteURLs(body, upstream string) string {
+	for _, old := range []string{
+		upstream + "/packages/",
+		strings.TrimSuffix(upstream, "/") + "/packages/",
+	} {
+		body = string(bytes.ReplaceAll([]byte(body), []byte(old), []byte("/pypi/packages/")))
+	}
+	return body
 }

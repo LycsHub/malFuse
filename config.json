@@ -23,6 +23,7 @@
   },
   "osv": {
     "enabled": true,
+    "block_on_vuln": false,
     "ttl": "1h",
     "base_url": "https://api.osv.dev"
   },

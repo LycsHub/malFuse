@@ -27,7 +27,7 @@ func TestOSVCheckVulnerable(t *testing.T) {
 	client := &testOSVClient{
 		result: osv.Result{Vulnerable: true},
 	}
-	check := OSVCheck(client)
+	check := OSVCheck(client, true)
 
 	result := check(context.Background(), Request{Name: "bad-pkg", Ecosystem: "pypi"})
 	if !result.Block {
@@ -42,7 +42,7 @@ func TestOSVCheckNotVulnerable(t *testing.T) {
 	client := &testOSVClient{
 		result: osv.Result{Vulnerable: false},
 	}
-	check := OSVCheck(client)
+	check := OSVCheck(client, true)
 
 	result := check(context.Background(), Request{Name: "safe-pkg", Ecosystem: "pypi"})
 	if result.Block {
@@ -54,7 +54,7 @@ func TestOSVCheckFailOpen(t *testing.T) {
 	client := &testOSVClient{
 		err: errors.New("api unreachable"),
 	}
-	check := OSVCheck(client)
+	check := OSVCheck(client, true)
 
 	result := check(context.Background(), Request{Name: "pkg", Ecosystem: "pypi"})
 	if result.Block {
@@ -66,7 +66,7 @@ func TestOSVCheckUsesEcosystem(t *testing.T) {
 	client := &testOSVClient{
 		result: osv.Result{Vulnerable: false},
 	}
-	check := OSVCheck(client)
+	check := OSVCheck(client, true)
 
 	check(context.Background(), Request{Name: "pkg", Version: "1.0", Ecosystem: "npm"})
 

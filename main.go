@@ -210,7 +210,7 @@ func runProxyWithConfig(cfg *config.Config) error {
 	}
 	if cfg.OSV.Enabled {
 		osvClient := osv.NewClient(cfg.OSV.BaseURL, cfg.OSV.TTL)
-		eng.AddNamed("osv-api", engine.OSVCheck(osvClient))
+		eng.AddNamed("osv-api", engine.OSVCheck(osvClient, cfg.OSV.BlockOnVuln))
 	}
 
 	handler := proxy.New(eng, routes)

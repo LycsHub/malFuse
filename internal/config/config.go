@@ -57,9 +57,10 @@ type TypoConfig struct {
 }
 
 type OSVConfig struct {
-	Enabled bool          `json:"enabled"`
-	TTL     time.Duration `json:"ttl"`
-	BaseURL string        `json:"base_url"`
+	Enabled       bool          `json:"enabled"`
+	BlockOnVuln   bool          `json:"block_on_vuln"`
+	TTL           time.Duration `json:"ttl"`
+	BaseURL       string        `json:"base_url"`
 }
 
 func (o *OSVConfig) UnmarshalJSON(data []byte) error {

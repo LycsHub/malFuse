@@ -2,11 +2,13 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"strings"
+	"time"
 
 	"malFuse/internal/engine"
 	"malFuse/internal/logger"
@@ -20,6 +22,12 @@ type Handler struct {
 	engine        Checker
 	streamChecker engine.StreamChecker
 	routes        map[string]RouteEntry
+	dbPinger      DBPinger
+	startTime     time.Time
+}
+
+type DBPinger interface {
+	Ping() error
 }
 
 type RouteEntry struct {
@@ -29,9 +37,14 @@ type RouteEntry struct {
 
 func New(eng Checker, routes map[string]RouteEntry) *Handler {
 	return &Handler{
-		engine: eng,
-		routes: routes,
+		engine:    eng,
+		routes:    routes,
+		startTime: time.Now(),
 	}
+}
+
+func (h *Handler) SetDBPinger(p DBPinger) {
+	h.dbPinger = p
 }
 
 func (h *Handler) SetStreamChecker(sc engine.StreamChecker) {
@@ -39,6 +52,11 @@ func (h *Handler) SetStreamChecker(sc engine.StreamChecker) {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/health" {
+		h.handleHealth(w)
+		return
+	}
+
 	matched, entry, prefix := h.matchRoute(r.URL.Path)
 	if !matched {
 		logger.Warn("no route matched", "path", r.URL.Path)
@@ -189,4 +207,25 @@ func extractNPMPackageName(path string) (string, bool) {
 		return "", false
 	}
 	return strings.Split(trimmed, "/")[0], true
+}
+
+func (h *Handler) handleHealth(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+
+	status := "ok"
+	dbOK := true
+	if h.dbPinger != nil {
+		if err := h.dbPinger.Ping(); err != nil {
+			dbOK = false
+			status = "degraded"
+		}
+	}
+
+	resp := map[string]interface{}{
+		"status": status,
+		"db":     dbOK,
+		"uptime": time.Since(h.startTime).String(),
+	}
+
+	json.NewEncoder(w).Encode(resp)
 }

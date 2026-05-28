@@ -90,6 +90,10 @@ func main() {
 	eng := engine.New(checks...)
 	handler := proxy.New(eng, routes)
 
+	if malDB != nil {
+		handler.SetDBPinger(malDB)
+	}
+
 	if cfg.ScriptScan.Enabled {
 		sc := &scanner.StreamChecker{
 			Config: scanner.ScanConfig{

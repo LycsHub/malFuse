@@ -225,6 +225,21 @@ func TestLookupNoVersionRequestMatchesSpecificVersion(t *testing.T) {
 	}
 }
 
+func TestLookupEmptyStringVersion(t *testing.T) {
+	dbPath := t.TempDir() + "/test.db"
+	db, _ := Open(dbPath)
+	defer db.Close()
+
+	// Simulate manual INSERT with empty string (not NULL)
+	db.Exec(`INSERT INTO malicious_packages (name, version, ecosystem, published, source) VALUES (?, ?, ?, ?, ?)`,
+		"test-pkg", "", "npm", "2026-01-01", "manual")
+
+	found, _ := Lookup(db, "test-pkg", "npm", "")
+	if !found {
+		t.Error("expected found true: empty string version should match as no-version")
+	}
+}
+
 func TestUpdateState(t *testing.T) {
 	dbPath := t.TempDir() + "/test.db"
 	defer os.Remove(dbPath)

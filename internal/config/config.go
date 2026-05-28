@@ -10,6 +10,7 @@ type Config struct {
 	Port       string           `json:"port"`
 	Host       string           `json:"host"`
 	DBPath     string           `json:"db_path"`
+	PIDFile    string           `json:"pid_file"`
 	RepoProxy  string           `json:"repo_proxy"`
 	Logging    LoggingConfig    `json:"logging"`
 	Routing    []Route          `json:"routing"`
@@ -87,7 +88,8 @@ func Default() *Config {
 	return &Config{
 		Port:   "8080",
 		Host:   "127.0.0.1",
-		DBPath: "malfuse.db",
+		DBPath:  "malfuse.db",
+		PIDFile: "malfuse.pid",
 		Logging: LoggingConfig{
 			Level:  "info",
 			Format: "text",

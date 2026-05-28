@@ -110,10 +110,10 @@ func (h *Handler) extractPackageInfo(path, ecosystem string) (string, string) {
 	switch ecosystem {
 	case "pypi":
 		name, _ := extractPyPIPackageName(path)
-		return name, ""
+		return name, extractPyPIVersion(path, name)
 	case "npm":
 		name, _ := extractNPMPackageName(path)
-		return name, ""
+		return name, extractNPMVersion(path, name)
 	}
 	return "", ""
 }
@@ -208,20 +208,94 @@ func extractPyPIPackageName(path string) (string, bool) {
 	return "", false
 }
 
+func extractPyPIVersion(path, pkgName string) string {
+	// Pattern 2: <pkgName>-<version>.ext in filename
+	base := path
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '/' {
+			base = path[i+1:]
+			break
+		}
+	}
+	prefix := pkgName + "-"
+	if strings.HasPrefix(base, prefix) {
+		rest := strings.TrimPrefix(base, prefix)
+		for _, ext := range []string{".tar.gz", ".whl", ".zip", ".tgz", ".tar"} {
+			if strings.HasSuffix(rest, ext) {
+				rest = rest[:len(rest)-len(ext)]
+			}
+		}
+		if rest != "" && len(rest) < 30 {
+			return rest
+		}
+	}
+	// Pattern 1: /<pkgName>/<version>/ like /pandas/1.1.3/
+	if idx := strings.Index(path, "/"+pkgName+"/"); idx >= 0 {
+		rest := path[idx+len(pkgName)+2:]
+		if slash := strings.IndexByte(rest, '/'); slash >= 0 {
+			rest = rest[:slash]
+		}
+		rest = strings.TrimRight(rest, "/")
+		if len(rest) > 0 && len(rest) < 20 {
+			return rest
+		}
+	}
+	return ""
+}
+
 func extractNPMPackageName(path string) (string, bool) {
 	trimmed := strings.Trim(path, "/")
 	if trimmed == "" {
 		return "", false
 	}
 	if strings.HasPrefix(trimmed, "@") {
-		parts := strings.SplitN(trimmed, "/", 2)
-		if len(parts) == 2 {
+		parts := strings.SplitN(trimmed, "/", 3)
+		if len(parts) >= 2 {
 			return "@" + parts[0][1:] + "/" + parts[1], true
 		}
 		return "", false
 	}
 	return strings.Split(trimmed, "/")[0], true
 }
+
+func extractNPMVersion(path, pkgName string) string {
+	trimmed := strings.Trim(path, "/")
+
+	// pattern: /<pkg>/<version> or /@scope/pkg/<version>
+	nameLen := len(pkgName)
+	if len(trimmed) > nameLen+1 && strings.HasPrefix(trimmed, pkgName+"/") {
+		rest := trimmed[nameLen+1:]
+		// Skip tgz tarball paths like /left-pad/-/left-pad-1.0.0.tgz
+		if strings.HasPrefix(rest, "-/") {
+			localName := pkgName
+			if idx := strings.LastIndex(pkgName, "/"); idx >= 0 {
+				localName = pkgName[idx+1:]
+			}
+			rest = rest[2:] // skip "-/"
+			prefix := localName + "-"
+			if strings.HasPrefix(rest, prefix) {
+				rest = strings.TrimPrefix(rest, prefix)
+				for _, ext := range []string{".tgz", ".tar.gz", ".tar"} {
+					if strings.HasSuffix(rest, ext) {
+						rest = rest[:len(rest)-len(ext)]
+						break
+					}
+				}
+				if rest != "" && len(rest) < 30 {
+					return rest
+				}
+			}
+			return ""
+		}
+		rest = strings.TrimRight(rest, "/")
+		if len(rest) > 0 && len(rest) < 20 {
+			return rest
+		}
+	}
+
+	return ""
+}
+
 
 func (h *Handler) handleHealth(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")

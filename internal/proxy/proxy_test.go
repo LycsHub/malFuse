@@ -172,3 +172,60 @@ func TestPackageNameExtractionNPM(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractPyPIVersion(t *testing.T) {
+	tests := []struct {
+		path    string
+		pkgName string
+		want    string
+	}{
+		// download URL patterns
+		{"/packages/source/p/pandas/pandas-1.1.3.tar.gz", "pandas", "1.1.3"},
+		{"/packages/pandas-2.0.0.whl", "pandas", "2.0.0"},
+		{"/packages-09e2e5b22160e941f56d40e86f78e2095/pandas/1.1.3", "pandas", "1.1.3"},
+		// simple API (no version)
+		{"/simple/pandas/", "pandas", ""},
+		// different package in path
+		{"/packages/numpy-1.0.tar.gz", "pandas", ""},
+	}
+	for _, tt := range tests {
+		ver := extractPyPIVersion(tt.path, tt.pkgName)
+		if ver != tt.want {
+			t.Errorf("extractPyPIVersion(%q, %q) = %q, want %q", tt.path, tt.pkgName, ver, tt.want)
+		}
+	}
+}
+
+func TestExtractNPMVersion(t *testing.T) {
+	tests := []struct {
+		path    string
+		pkgName string
+		want    string
+	}{
+		// version in path
+		{"/left-pad/1.0.0", "left-pad", "1.0.0"},
+		{"/@scope/pkg/2.3.1", "@scope/pkg", "2.3.1"},
+		// tarball download
+		{"/left-pad/-/left-pad-1.0.0.tgz", "left-pad", "1.0.0"},
+		{"/@scope/pkg/-/pkg-2.0.0.tgz", "@scope/pkg", "2.0.0"},
+		// simple API (no version)
+		{"/left-pad", "left-pad", ""},
+	}
+	for _, tt := range tests {
+		ver := extractNPMVersion(tt.path, tt.pkgName)
+		if ver != tt.want {
+			t.Errorf("extractNPMVersion(%q, %q) = %q, want %q", tt.path, tt.pkgName, ver, tt.want)
+		}
+	}
+}
+
+func TestNPMScopedPackageNoVersionPollution(t *testing.T) {
+	name, _ := extractNPMPackageName("/@scope/pkg/2.0.0")
+	if name != "@scope/pkg" {
+		t.Errorf("expected @scope/pkg, got %q", name)
+	}
+	name, _ = extractNPMPackageName("/@scope/pkg")
+	if name != "@scope/pkg" {
+		t.Errorf("expected @scope/pkg, got %q", name)
+	}
+}

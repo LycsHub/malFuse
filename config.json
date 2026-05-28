@@ -10,7 +10,7 @@
     "output": "stdout"
   },
   "routing": [
-    {"prefix": "/pypi/", "upstream": "https://pypi.tuna.tsinghua.edu.cn", "ecosystem": "pypi"},
+    {"prefix": "/pypi/", "upstream": "https://mirrors.ustc.edu.cn/pypi/simple", "ecosystem": "pypi"},
     {"prefix": "/npm/", "upstream": "https://registry.npmjs.org", "ecosystem": "npm"}
   ],
   "cooldown": {
@@ -18,7 +18,7 @@
     "duration": "48h"
   },
   "typo": {
-    "enabled": true,
+    "enabled": false,
     "threshold": 2
   },
   "osv": {

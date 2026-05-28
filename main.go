@@ -197,21 +197,22 @@ func runProxyWithConfig(cfg *config.Config) error {
 		}
 	}
 
-	checks := []engine.CheckFunc{engine.WhitelistCheck(malDB), engine.MaliciousDBCheck(malDB)}
+	eng := engine.New()
+	eng.AddNamed("whitelist", engine.WhitelistCheck(malDB))
+	eng.AddNamed("malicious-db", engine.MaliciousDBCheck(malDB))
 
 	if cfg.Cooldown.Enabled {
 		metadataFetcher := engine.NewRegistryMetadataFetcher(routesForEngine)
-		checks = append(checks, engine.CooldownCheck(metadataFetcher, cfg.Cooldown.Duration))
+		eng.AddNamed("cooldown", engine.CooldownCheck(metadataFetcher, cfg.Cooldown.Duration))
 	}
 	if cfg.Typo.Enabled {
-		checks = append(checks, engine.TypoCheck(nil, cfg.Typo.Threshold))
+		eng.AddNamed("typo-squatting", engine.TypoCheck(nil, cfg.Typo.Threshold))
 	}
 	if cfg.OSV.Enabled {
 		osvClient := osv.NewClient(cfg.OSV.BaseURL, cfg.OSV.TTL)
-		checks = append(checks, engine.OSVCheck(osvClient))
+		eng.AddNamed("osv-api", engine.OSVCheck(osvClient))
 	}
 
-	eng := engine.New(checks...)
 	handler := proxy.New(eng, routes)
 
 	if malDB != nil {

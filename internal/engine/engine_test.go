@@ -32,18 +32,15 @@ func TestRequestAndResultTypes(t *testing.T) {
 func TestEngineCheckSequentialShortCircuit(t *testing.T) {
 	callOrder := []string{}
 
-	e := &Engine{
-		checks: []CheckFunc{
-			func(ctx context.Context, req Request) Result {
-				callOrder = append(callOrder, "first")
-				return Result{Block: true, Reason: "first_check"}
-			},
-			func(ctx context.Context, req Request) Result {
-				callOrder = append(callOrder, "second")
-				return Result{Block: true, Reason: "second_check"}
-			},
-		},
-	}
+	e := New()
+	e.AddNamed("first", func(ctx context.Context, req Request) Result {
+		callOrder = append(callOrder, "first")
+		return Result{Block: true, Reason: "first_check"}
+	})
+	e.AddNamed("second", func(ctx context.Context, req Request) Result {
+		callOrder = append(callOrder, "second")
+		return Result{Block: true, Reason: "second_check"}
+	})
 
 	result := e.Check(context.Background(), Request{Name: "pkg"})
 	if !result.Block {
@@ -58,16 +55,9 @@ func TestEngineCheckSequentialShortCircuit(t *testing.T) {
 }
 
 func TestEngineCheckAllPass(t *testing.T) {
-	e := &Engine{
-		checks: []CheckFunc{
-			func(ctx context.Context, req Request) Result {
-				return Result{Block: false}
-			},
-			func(ctx context.Context, req Request) Result {
-				return Result{Block: false}
-			},
-		},
-	}
+	e := New()
+	e.AddNamed("first", func(ctx context.Context, req Request) Result { return Result{Block: false} })
+	e.AddNamed("second", func(ctx context.Context, req Request) Result { return Result{Block: false} })
 
 	result := e.Check(context.Background(), Request{Name: "pkg"})
 	if result.Block {
@@ -77,19 +67,16 @@ func TestEngineCheckAllPass(t *testing.T) {
 
 func TestEngineCheckContextCancellation(t *testing.T) {
 	blocked := false
-	e := &Engine{
-		checks: []CheckFunc{
-			func(ctx context.Context, req Request) Result {
-				select {
-				case <-ctx.Done():
-					blocked = true
-					return Result{Block: false}
-				case <-time.After(100 * time.Millisecond):
-					return Result{Block: false}
-				}
-			},
-		},
-	}
+	e := New()
+	e.AddNamed("slow", func(ctx context.Context, req Request) Result {
+		select {
+		case <-ctx.Done():
+			blocked = true
+			return Result{Block: false}
+		case <-time.After(100 * time.Millisecond):
+			return Result{Block: false}
+		}
+	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
@@ -98,25 +85,21 @@ func TestEngineCheckContextCancellation(t *testing.T) {
 	if result.Block {
 		t.Error("expected Block false (no checks block, just ctx cancelled)")
 	}
-	// The check itself returned false, but ctx was done
 	if !blocked {
 		t.Error("expected check to detect context cancellation")
 	}
 }
 
 func TestEngineCheckContextDeadlineExceeded(t *testing.T) {
-	e := &Engine{
-		checks: []CheckFunc{
-			func(ctx context.Context, req Request) Result {
-				select {
-				case <-ctx.Done():
-					return Result{Block: true, Reason: "context_cancelled"}
-				case <-time.After(time.Second):
-					return Result{Block: false}
-				}
-			},
-		},
-	}
+	e := New()
+	e.AddNamed("slow", func(ctx context.Context, req Request) Result {
+		select {
+		case <-ctx.Done():
+			return Result{Block: true, Reason: "context_cancelled"}
+		case <-time.After(time.Second):
+			return Result{Block: false}
+		}
+	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()

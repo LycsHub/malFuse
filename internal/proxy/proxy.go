@@ -67,6 +67,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	strippedPath := strings.TrimPrefix(r.URL.Path, prefix)
 	pkgName, version := h.extractPackageInfo(strippedPath, entry.Ecosystem)
 
+	logger.Debug("incoming request",
+		"method", r.Method,
+		"path", r.URL.Path,
+		"route", prefix,
+		"upstream", entry.Upstream.String(),
+		"package", pkgName,
+		"ecosystem", entry.Ecosystem,
+	)
+
 	result := h.engine.Check(r.Context(), engine.Request{
 		Name:      pkgName,
 		Version:   version,
@@ -79,6 +88,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte(result.Reason))
 		return
+	}
+
+	if result.Skip {
+		logger.Info("package whitelisted", "package", pkgName, "ecosystem", entry.Ecosystem)
 	}
 
 	h.forward(w, r, entry, prefix)
@@ -108,13 +121,14 @@ func (h *Handler) extractPackageInfo(path, ecosystem string) (string, string) {
 func (h *Handler) forward(w http.ResponseWriter, r *http.Request, entry RouteEntry, prefix string) {
 	proxy := httputil.NewSingleHostReverseProxy(entry.Upstream)
 
-	if h.streamChecker != nil {
-		proxy.ModifyResponse = func(resp *http.Response) error {
-			ct := resp.Header.Get("Content-Type")
-			if !isArchive(ct) {
-				return nil
-			}
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		logger.Debug("upstream response",
+			"status", resp.StatusCode,
+			"content_type", resp.Header.Get("Content-Type"),
+			"path", r.URL.Path,
+		)
 
+		if h.streamChecker != nil && isArchive(resp.Header.Get("Content-Type")) {
 			ctx, cancel := context.WithCancel(resp.Request.Context())
 			pr, pw := io.Pipe()
 			resp.Body = &teeReadCloser{
@@ -132,8 +146,8 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, entry RouteEnt
 			}()
 
 			resp.Request = resp.Request.WithContext(ctx)
-			return nil
 		}
+		return nil
 	}
 
 	originalDirector := proxy.Director

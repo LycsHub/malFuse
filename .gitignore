@@ -5,3 +5,5 @@ ossf-malicious-packages/
 malfuse-db
 malfuse.dbconfig_bak.json
 malfuse
+config_bak.json
+malfuse.db

@@ -11,7 +11,7 @@
   },
   "routing": [
     {"prefix": "/pypi/", "upstream": "https://pypi.tuna.tsinghua.edu.cn", "ecosystem": "pypi"},
-    {"prefix": "/npm/", "upstream": "https://registry.npmjs.org", "ecosystem": "npm"}
+    {"prefix": "/npm/", "upstream": "https://registry.npmmirror.com", "ecosystem": "npm"}
   ],
   "cooldown": {
     "enabled": false,

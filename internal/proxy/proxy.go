@@ -142,6 +142,18 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, entry RouteEnt
 			}
 		}
 
+		// Rewrite npm tarball URLs in JSON response
+		if isJSON(resp.Header.Get("Content-Type")) && strings.HasPrefix(r.URL.Path, "/npm/") {
+			body, err := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err == nil {
+				rewritten := rewriteNPMTarballs(string(body), entry.Upstream.String())
+				resp.Body = io.NopCloser(strings.NewReader(rewritten))
+				resp.ContentLength = int64(len(rewritten))
+				resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(rewritten)))
+			}
+		}
+
 		if h.streamChecker != nil && isArchive(resp.Header.Get("Content-Type")) {
 			ctx, cancel := context.WithCancel(resp.Request.Context())
 			pr, pw := io.Pipe()
@@ -347,6 +359,10 @@ func isHTML(ct string) bool {
 	return strings.Contains(strings.ToLower(ct), "text/html")
 }
 
+func isJSON(ct string) bool {
+	return strings.Contains(strings.ToLower(ct), "application/json")
+}
+
 func rewriteURLs(body, upstream string) string {
 	for _, old := range []string{
 		upstream + "/packages/",
@@ -355,4 +371,10 @@ func rewriteURLs(body, upstream string) string {
 		body = string(bytes.ReplaceAll([]byte(body), []byte(old), []byte("/pypi/packages/")))
 	}
 	return body
+}
+
+func rewriteNPMTarballs(body, upstream string) string {
+	// Replace `"tarball":"https://<upstream>/..." with `"tarball":"/npm/..."`
+	prefix := `"tarball":"` + upstream
+	return string(bytes.ReplaceAll([]byte(body), []byte(prefix), []byte(`"tarball":"/npm`)))
 }

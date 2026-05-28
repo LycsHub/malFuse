@@ -5,12 +5,12 @@
   "pid_file": "malfuse.pid",
   "repo_proxy": "ghfast.top",
   "logging": {
-    "level": "info",
+    "level": "debug",
     "format": "text",
     "output": "stdout"
   },
   "routing": [
-    {"prefix": "/pypi/", "upstream": "https://mirrors.ustc.edu.cn", "ecosystem": "pypi"},
+    {"prefix": "/pypi/", "upstream": "https://pypi.tuna.tsinghua.edu.cn", "ecosystem": "pypi"},
     {"prefix": "/npm/", "upstream": "https://registry.npmjs.org", "ecosystem": "npm"}
   ],
   "cooldown": {

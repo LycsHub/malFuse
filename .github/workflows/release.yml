@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Build binaries
+        run: |
+          CGO_ENABLED=0 go build -o malfuse-linux-arm64 .
+          CGO_ENABLED=0 GOARCH=amd64 go build -o malfuse-linux-amd64 .
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o malfuse-darwin-arm64 .
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o malfuse-darwin-amd64 .
+          CGO_ENABLED=0 go build -o malfuse-db-linux-arm64 ./cmd/malfuse-db/
+          CGO_ENABLED=0 GOARCH=amd64 go build -o malfuse-db-linux-amd64 ./cmd/malfuse-db/
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -o malfuse-db-darwin-arm64 ./cmd/malfuse-db/
+          CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -o malfuse-db-darwin-amd64 ./cmd/malfuse-db/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            malfuse-linux-arm64
+            malfuse-linux-amd64
+            malfuse-darwin-arm64
+            malfuse-darwin-amd64
+            malfuse-db-linux-arm64
+            malfuse-db-linux-amd64
+            malfuse-db-darwin-arm64
+            malfuse-db-darwin-amd64
+          generate_release_notes: true

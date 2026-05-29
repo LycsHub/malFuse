@@ -1,6 +1,6 @@
 module malFuse
 
-go 1.19
+go 1.21
 
 require modernc.org/sqlite v1.14.7
 

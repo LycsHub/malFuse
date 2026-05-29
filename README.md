@@ -11,7 +11,10 @@ through malFuse. Every install request is checked against a local database of **
 confirmed malicious packages** sourced from the [OpenSSF](https://github.com/ossf/malicious-packages)
 project, plus real-time OSV vulnerability lookups and streaming script analysis.
 
-- **Multi-ecosystem** — supports PyPI, npm, RubyGems, NuGet, Crates.io, Go modules, and more
+- **Multi-ecosystem database** — 252,637 confirmed malicious packages across 11 ecosystems.
+  Currently supports **PyPI** (pip/uv) and **npm** (npm/pnpm/yarn) routing. Other ecosystems
+  (RubyGems, NuGet, Crates.io, Go, Maven, Packagist, VSCode) have data in the database
+  but proxy routing is not yet implemented.
 - **6-layer detection** — whitelist, malicious DB, cooldown, typo-squatting, OSV API, script scan
 - **Zero friction** — no CA certificates, no HTTPS interception, plain HTTP on localhost
 - **Offline capable** — SQLite-backed, works without network after initial DB setup
@@ -126,6 +129,10 @@ These tools don't support CLI config commands—manual setup required:
 ---
 
 ## Blocking Granularity
+
+> **Note:** Currently only **PyPI** (pip/uv) and **npm** (npm/pnpm/yarn) package managers are
+> supported for proxy routing. Other ecosystems exist in the malicious database but do not
+> have proxy routing yet.
 
 Different package managers have different proxy behaviors, resulting in different version-matching precision:
 

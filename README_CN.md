@@ -1,10 +1,17 @@
-# 📖 MalFuse — 恶意包物理防火墙
+# 📖 malFuse — 供应链投毒防火墙
 
 [English](README.md) | 中文
 
-`MalFuse` 是一款基于 **Go 语言** 开发的本地 HTTP 代理，在 `pip install` / `npm install` 等包安装过程中，于恶意代码落地前实施 **Inline Block（流式阻断）**。名字取自 **Mal**icious + **Fuse**（保险丝/熔断）。
+malFuse 是一款**本地 HTTP 代理防火墙**，通过拦截包安装请求，在恶意代码落地磁盘之前将其阻断，从而防止**软件供应链投毒**。基于 Go 语言构建，零运行时依赖。
 
-P0 + P1 已全部完成，P2 进行中（白名单已实现）。252,637 条恶意包记录，覆盖 11 个生态系统。
+**工作原理：** 将 pip、npm、yarn、uv 等包管理器配置为经过 malFuse 代理。每个安装请求都会经过本地数据库（**252,637 条**已确认的恶意包记录，来源于 [OpenSSF](https://github.com/ossf/malicious-packages) 项目）检测，配合实时 OSV 漏洞查询和流式脚本分析。
+
+- **多生态支持** — 覆盖 PyPI、npm、RubyGems、NuGet、Crates.io、Go modules 等
+- **6 层检测** — 白名单、恶意包数据库、冷却期、typo-squatting、OSV API、脚本扫描
+- **零摩擦接入** — 无需 CA 证书、无需 HTTPS 拦截、本地明文 HTTP
+- **离线可用** — SQLite 驱动，首次建库后无网络也能运行
+
+P0 + P1 已全部完成，P2 进行中（白名单、CI/CD 已完成）。252,637 条恶意包记录，覆盖 11 个生态系统。
 
 ---
 

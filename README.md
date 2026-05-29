@@ -1,10 +1,22 @@
-# 📖 MalFuse — Malicious Package Firewall
+# 📖 malFuse — Supply Chain Firewall
 
 [中文](README_CN.md) | English
 
-`MalFuse` is a local HTTP proxy built in **Go** that intercepts `pip install` / `npm install` traffic and blocks malicious packages **before they land on disk** via inline HTTP 403. The name comes from **Mal**icious + **Fuse** (circuit breaker).
+malFuse is a **local HTTP proxy firewall** that prevents **software supply chain poisoning**
+by intercepting package install requests and blocking malicious packages before they reach
+your disk. Built in Go with zero runtime dependencies.
 
-P0 + P1 complete. P2 in progress (whitelist done). 252,637 malicious package records across 11 ecosystems.
+**How it works:** pip, npm, yarn, uv, and other package managers are configured to route
+through malFuse. Every install request is checked against a local database of **252,637
+confirmed malicious packages** sourced from the [OpenSSF](https://github.com/ossf/malicious-packages)
+project, plus real-time OSV vulnerability lookups and streaming script analysis.
+
+- **Multi-ecosystem** — supports PyPI, npm, RubyGems, NuGet, Crates.io, Go modules, and more
+- **6-layer detection** — whitelist, malicious DB, cooldown, typo-squatting, OSV API, script scan
+- **Zero friction** — no CA certificates, no HTTPS interception, plain HTTP on localhost
+- **Offline capable** — SQLite-backed, works without network after initial DB setup
+
+P0 + P1 complete. P2 in progress (whitelist, CI/CD done). 252,637 malicious package records across 11 ecosystems.
 
 ---
 

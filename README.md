@@ -155,7 +155,7 @@ Each install request passes through 6 checks (including whitelist). The first ma
 | 0 | **Whitelist** | SQLite `whitelist` table | Match → immediate PASS, skip all remaining checks | On |
 | 1 | **Malicious DB** | SQLite `malicious_packages` (252,637 records) | Match → 403 Forbidden | On |
 | 2 | **Cooldown** | `malicious_packages.published` (OSV report timestamp) | Report age < 48h → 403 | Off |
-| 3 | **Typo-Squatting** | Embedded 2,790 popular packages + Levenshtein distance | Name similarity → 403 | On |
+| 3 | **Typo-Squatting** | Embedded 2,790 popular packages + Levenshtein distance | Name similarity → 403 | Off |
 | 4 | **OSV API** | `api.osv.dev/v1/query` + in-memory TTL cache | Vuln found + `block_on_vuln=true` → 403 | On (log only) |
 | 5 | **Stream Script Scan** | TeeReader streaming (tar/gzip extraction) | Malicious script → connection reset | Off |
 
@@ -165,6 +165,8 @@ Each install request passes through 6 checks (including whitelist). The first ma
 - Cooldown — skip on missing DB or `published` field; DB-only query, no extra network calls
 - OSV API — network unreachable → pass (fail-open); `block_on_vuln=false` → log only
 - Script scan — parse/archive error → pass (fail-open)
+
+**Note:** Cooldown and typo-squatting are **off by default** due to false-positive risk and stability concerns. Enable only when you understand the trade-offs.
 
 **Script scan (#5) attack vectors covered:**
 

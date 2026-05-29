@@ -155,7 +155,7 @@ sqlite3 malfuse.db "INSERT INTO malicious_packages VALUES ('bad-lib', NULL, 'npm
 | 0 | **白名单** | SQLite `whitelist` 表 | 命中 → 直接 PASS，跳过所有后续检测 | 启用 |
 | 1 | **恶意包数据库** | SQLite `malicious_packages`（252,637 条） | 命中 → 403 Forbidden | 启用 |
 | 2 | **安全冷却期** | `malicious_packages.published`（OSV 报告时间戳） | 报告时间 < 48h → 403 | 关闭 |
-| 3 | **Typo-Squatting** | 内嵌 2790 流行包 + Levenshtein 编辑距离 | 名字相似 → 403 | 启用 |
+| 3 | **Typo-Squatting** | 内嵌 2790 流行包 + Levenshtein 编辑距离 | 名字相似 → 403 | 关闭 |
 | 4 | **OSV 漏洞 API** | `api.osv.dev/v1/query` + 内存 TTL 缓存 | 命中且 `block_on_vuln=true` → 403 | 启用（不阻断） |
 | 5 | **流式脚本扫描** | TeeReader 边下边扫（tar/gzip 解包） | 恶意脚本 → 中断连接 | 关闭 |
 
@@ -165,6 +165,8 @@ sqlite3 malfuse.db "INSERT INTO malicious_packages VALUES ('bad-lib', NULL, 'npm
 - 冷却期 — 无 DB 或缺少 `published` 字段时跳过；依赖 DB 查询，无额外网络请求
 - OSV API — 网络不可达则放行（fail-open）；`block_on_vuln=false` 时仅日志记录漏洞数
 - 脚本扫描 — 解包/解析错误则放行（fail-open）
+
+**注意：** 冷却期和 typo-squatting **默认关闭**，因误报风险和稳定性考虑。启用前请评估影响。
 
 **脚本扫描（#5）覆盖的投毒向量：**
 

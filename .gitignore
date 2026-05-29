@@ -7,3 +7,5 @@ malfuse
 config_bak.json
 malfuse.db-shm
 malfuse.db-wal
+.yarn/
+docs/superpowers/

@@ -25,3 +25,33 @@ conda search requests 2>&1 | grep malFuse
 channels:
   - defaults
 ```
+
+---
+
+## English
+
+Conda requires modifying the `~/.condarc` file.
+
+### Setup
+
+Edit `~/.condarc` (Linux/macOS) or `%USERPROFILE%/.condarc` (Windows):
+
+```yaml
+channels:
+  - http://127.0.0.1:8080/pypi/simple/
+  - defaults
+```
+
+### Verify
+
+```bash
+conda search requests 2>&1 | grep malFuse
+```
+
+### Restore
+
+```yaml
+# Remove or comment the malFuse channel
+channels:
+  - defaults
+```

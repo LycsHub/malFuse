@@ -24,3 +24,32 @@ poetry add --dry-run requests 2>&1 | grep malFuse
 ```toml
 # 删除 [[tool.poetry.source]] 节，或设置 default = false
 ```
+
+---
+
+## English
+
+Poetry requires modifying `pyproject.toml` source configuration.
+
+### Setup
+
+Edit project `pyproject.toml`:
+
+```toml
+[[tool.poetry.source]]
+name = "malFuse"
+url = "http://127.0.0.1:8080/pypi/simple/"
+default = true
+```
+
+### Verify
+
+```bash
+poetry add --dry-run requests 2>&1 | grep malFuse
+```
+
+### Restore
+
+```toml
+# Delete the [[tool.poetry.source]] section, or set default = false
+```

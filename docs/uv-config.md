@@ -1,6 +1,6 @@
 # uv 配置 malFuse 代理
 
-uv 原生不支持 `config set` 命令，需手动配置。
+uv 不支持 `config set` 命令，需手动配置。
 
 ## 方法一：环境变量（推荐）
 
@@ -29,4 +29,39 @@ uv pip install --dry-run requests 2>&1 | grep malFuse
 ```bash
 unset UV_INDEX_URL
 # 或删除 uv.toml 中的 [pip] 节
+```
+
+---
+
+## English
+
+uv doesn't support `config set`. Manual setup required.
+
+### Method 1: Environment Variable (Recommended)
+
+```bash
+export UV_INDEX_URL=http://127.0.0.1:8080/pypi/simple/
+uv pip install requests
+```
+
+### Method 2: Config File
+
+Edit `~/.config/uv/uv.toml` (Linux/macOS) or `%APPDATA%/uv/uv.toml` (Windows):
+
+```toml
+[pip]
+index-url = "http://127.0.0.1:8080/pypi/simple/"
+```
+
+### Verify
+
+```bash
+uv pip install --dry-run requests 2>&1 | grep malFuse
+```
+
+### Restore
+
+```bash
+unset UV_INDEX_URL
+# or delete the [pip] section in uv.toml
 ```

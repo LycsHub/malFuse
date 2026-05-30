@@ -27,7 +27,11 @@ func Diff(dir, fromHash, toHash string) ([]FileChange, error) {
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("git diff: %w", err)
+		var stderr []byte
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr = exitErr.Stderr
+		}
+		return nil, fmt.Errorf("git diff: %w (stderr: %s)", err, string(stderr))
 	}
 
 	var changes []FileChange

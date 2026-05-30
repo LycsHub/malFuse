@@ -86,3 +86,13 @@ func TestDiffEmpty(t *testing.T) {
 		t.Errorf("expected 0 changes for same hash, got %d", len(changes))
 	}
 }
+
+func TestDiffUnavailableCommit(t *testing.T) {
+	dir := setupTempGitRepo(t)
+
+	// Use a fake commit hash that will never exist
+	_, err := Diff(dir, "0000000000000000000000000000000000000000", "HEAD")
+	if err == nil {
+		t.Fatal("expected error for unavailable commit, got nil")
+	}
+}

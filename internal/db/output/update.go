@@ -64,18 +64,25 @@ func RunUpdate(db *sql.DB, repoDir, mode, sqlOutput, repoProxy string) error {
 		} else {
 			changes, err := ingest.Diff(repoDir, prevCommit, remoteHash)
 			if err != nil {
-				return fmt.Errorf("diff for %s: %w", eco, err)
-			}
-
-			ecoPrefix := fmt.Sprintf("osv/malicious/%s/", eco)
-			for _, ch := range changes {
-				if !strings.HasPrefix(ch.Path, ecoPrefix) {
-					continue
+				logger.Warn("diff failed, falling back to full scan",
+					"ecosystem", eco, "error", err)
+				ecoDir := filepath.Join(repoDir, "osv", "malicious", eco)
+				files, listErr := ingest.ListFiles(ecoDir)
+				if listErr != nil {
+					return fmt.Errorf("list files for %s (fallback after diff failure): %w", eco, listErr)
 				}
-				if ch.Status == "D" {
-					deletedFiles = append(deletedFiles, filepath.Join(repoDir, ch.Path))
-				} else if ch.Status == "A" || ch.Status == "M" {
-					addedFiles = append(addedFiles, filepath.Join(repoDir, ch.Path))
+				addedFiles = files
+			} else {
+				ecoPrefix := fmt.Sprintf("osv/malicious/%s/", eco)
+				for _, ch := range changes {
+					if !strings.HasPrefix(ch.Path, ecoPrefix) {
+						continue
+					}
+					if ch.Status == "D" {
+						deletedFiles = append(deletedFiles, filepath.Join(repoDir, ch.Path))
+					} else if ch.Status == "A" || ch.Status == "M" {
+						addedFiles = append(addedFiles, filepath.Join(repoDir, ch.Path))
+					}
 				}
 			}
 		}

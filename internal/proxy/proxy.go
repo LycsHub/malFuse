@@ -23,12 +23,14 @@ type Checker interface {
 }
 
 type Handler struct {
-	engine        Checker
-	streamChecker engine.StreamChecker
-	routes        map[string]RouteEntry
-	dbPinger      DBPinger
-	dbFilter      *sql.DB
-	startTime     time.Time
+	engine              Checker
+	streamChecker       engine.StreamChecker
+	dynamicAnalyzer     engine.DynamicAnalyzer
+	dynamicMaxTotalSize int64
+	routes              map[string]RouteEntry
+	dbPinger            DBPinger
+	dbFilter            *sql.DB
+	startTime           time.Time
 }
 
 type DBPinger interface {
@@ -60,6 +62,11 @@ func (h *Handler) SetStreamChecker(sc engine.StreamChecker) {
 	h.streamChecker = sc
 }
 
+func (h *Handler) SetDynamicAnalyzer(da engine.DynamicAnalyzer, maxTotalSize int64) {
+	h.dynamicAnalyzer = da
+	h.dynamicMaxTotalSize = maxTotalSize
+}
+
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/health" {
 		h.handleHealth(w)
@@ -85,12 +92,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"ecosystem", entry.Ecosystem,
 	)
 
-	result := h.engine.Check(r.Context(), engine.Request{
+	engineReq := engine.Request{
 		Name:      pkgName,
 		Version:   version,
 		Ecosystem: entry.Ecosystem,
 		RawPath:   r.URL.Path,
-	})
+	}
+	result := h.engine.Check(r.Context(), engineReq)
 
 	if result.Block {
 		logger.Warn("package blocked", "package", pkgName, "reason", result.Reason)
@@ -103,7 +111,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		logger.Info("package whitelisted", "package", pkgName, "ecosystem", entry.Ecosystem)
 	}
 
-	h.forward(w, r, entry, prefix)
+	h.forward(w, r, entry, prefix, engineReq)
 }
 
 func (h *Handler) matchRoute(path string) (bool, RouteEntry, string) {
@@ -127,7 +135,7 @@ func (h *Handler) extractPackageInfo(path, ecosystem string) (string, string) {
 	return "", ""
 }
 
-func (h *Handler) forward(w http.ResponseWriter, r *http.Request, entry RouteEntry, prefix string) {
+func (h *Handler) forward(w http.ResponseWriter, r *http.Request, entry RouteEntry, prefix string, engineReq engine.Request) {
 	proxy := httputil.NewSingleHostReverseProxy(entry.Upstream)
 
 	proxy.ModifyResponse = func(resp *http.Response) error {
@@ -169,6 +177,11 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, entry RouteEnt
 			}
 		}
 
+		if h.dynamicAnalyzer != nil && isArchive(resp.Header.Get("Content-Type")) {
+			h.handleDynamicArchive(resp, engineReq)
+			return nil
+		}
+
 		if h.streamChecker != nil && isArchive(resp.Header.Get("Content-Type")) {
 			ctx, cancel := context.WithCancel(resp.Request.Context())
 			pr, pw := io.Pipe()
@@ -179,7 +192,7 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, entry RouteEnt
 
 			go func() {
 				defer pr.Close()
-				result := h.streamChecker.StreamCheck(engine.Request{}, pr)
+				result := h.streamChecker.StreamCheck(engineReq, pr)
 				if result.Block {
 					logger.Warn("script scan blocked", "reason", result.Reason)
 					cancel()
@@ -210,6 +223,76 @@ func (h *Handler) forward(w http.ResponseWriter, r *http.Request, entry RouteEnt
 	}
 
 	proxy.ServeHTTP(w, r)
+}
+
+func (h *Handler) handleDynamicArchive(resp *http.Response, engineReq engine.Request) {
+	original := resp.Body
+
+	body, tooLarge, err := readWithLimit(original, h.dynamicMaxTotalSize)
+	if err != nil {
+		original.Close()
+		logger.Warn("dynamic scan skipped: response read failed", "error", err)
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		resp.ContentLength = int64(len(body))
+		resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
+		return
+	}
+	if tooLarge {
+		logger.Warn("dynamic scan skipped: archive too large",
+			"package", engineReq.Name,
+			"ecosystem", engineReq.Ecosystem,
+		)
+		resp.Body = io.NopCloser(io.MultiReader(bytes.NewReader(body), original))
+		resp.ContentLength = -1
+		resp.Header.Del("Content-Length")
+		return
+	}
+	original.Close()
+
+	if h.streamChecker != nil {
+		result := h.streamChecker.StreamCheck(engineReq, bytes.NewReader(body))
+		if result.Block {
+			logger.Warn("script scan blocked", "package", engineReq.Name, "reason", result.Reason)
+			setBlockedArchiveResponse(resp, result.Reason)
+			return
+		}
+	}
+
+	result := h.dynamicAnalyzer.Analyze(resp.Request.Context(), engineReq, body)
+	if result.Block {
+		setBlockedArchiveResponse(resp, result.Reason)
+		return
+	}
+
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+	resp.ContentLength = int64(len(body))
+	resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(body)))
+}
+
+func readWithLimit(r io.Reader, limit int64) ([]byte, bool, error) {
+	if limit <= 0 {
+		body, err := io.ReadAll(r)
+		return body, false, err
+	}
+	lr := io.LimitReader(r, limit+1)
+	body, err := io.ReadAll(lr)
+	if err != nil {
+		return body, false, err
+	}
+	if int64(len(body)) > limit {
+		return body, true, nil
+	}
+	return body, false, nil
+}
+
+func setBlockedArchiveResponse(resp *http.Response, reason string) {
+	resp.StatusCode = http.StatusForbidden
+	resp.Status = "403 Forbidden"
+	resp.Header.Del("Content-Encoding")
+	resp.Header.Set("Content-Type", "text/plain; charset=utf-8")
+	resp.Body = io.NopCloser(strings.NewReader(reason))
+	resp.ContentLength = int64(len(reason))
+	resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(reason)))
 }
 
 type teeReadCloser struct {
@@ -347,7 +430,6 @@ func extractNPMVersion(path, pkgName string) string {
 
 	return ""
 }
-
 
 func (h *Handler) handleHealth(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")

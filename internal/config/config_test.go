@@ -99,4 +99,57 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.OSV.BaseURL != "https://api.osv.dev" {
 		t.Errorf("expected default osv base_url, got %s", cfg.OSV.BaseURL)
 	}
+	if cfg.DynamicScan.Enabled {
+		t.Error("expected dynamic_scan disabled by default")
+	}
+	if cfg.DynamicScan.Runtime != "msb" {
+		t.Errorf("expected default dynamic runtime msb, got %s", cfg.DynamicScan.Runtime)
+	}
+	if cfg.DynamicScan.Timeout != 30*time.Second {
+		t.Errorf("expected default dynamic timeout 30s, got %v", cfg.DynamicScan.Timeout)
+	}
+	if cfg.DynamicScan.MaxTotalSize != 50*1024*1024 {
+		t.Errorf("expected default dynamic max size 50MiB, got %d", cfg.DynamicScan.MaxTotalSize)
+	}
+	if !cfg.DynamicScan.CacheEnabled {
+		t.Error("expected dynamic cache enabled by default")
+	}
+	if cfg.DynamicScan.Network != "none" {
+		t.Errorf("expected default dynamic network none, got %s", cfg.DynamicScan.Network)
+	}
+}
+
+func TestLoadDynamicScanConfig(t *testing.T) {
+	jsonData := `{
+  "routing": [
+    {"prefix": "/npm/", "upstream": "https://registry.npmjs.org", "ecosystem": "npm"}
+  ],
+  "dynamic_scan": {
+    "enabled": true,
+    "runtime": "msb",
+    "timeout": "10s",
+    "max_total_size": 1048576,
+    "cache_enabled": false,
+    "network": "none",
+    "npm_image": "node:22-alpine",
+    "pypi_image": "python:3.12-alpine"
+  }
+}`
+
+	cfg, err := Load([]byte(jsonData))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !cfg.DynamicScan.Enabled {
+		t.Error("expected dynamic_scan enabled")
+	}
+	if cfg.DynamicScan.Timeout != 10*time.Second {
+		t.Errorf("expected dynamic timeout 10s, got %v", cfg.DynamicScan.Timeout)
+	}
+	if cfg.DynamicScan.MaxTotalSize != 1048576 {
+		t.Errorf("expected max_total_size 1048576, got %d", cfg.DynamicScan.MaxTotalSize)
+	}
+	if cfg.DynamicScan.CacheEnabled {
+		t.Error("expected cache disabled")
+	}
 }

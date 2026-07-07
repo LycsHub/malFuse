@@ -1,7 +1,9 @@
 package proxy
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -18,6 +20,26 @@ type mockEngine struct {
 
 func (e *mockEngine) Check(_ context.Context, _ engine.Request) engine.Result {
 	return engine.Result{Block: e.block, Reason: e.reason}
+}
+
+type fakeDynamicAnalyzer struct {
+	calls  int
+	result engine.DynamicResult
+	body   []byte
+}
+
+func (a *fakeDynamicAnalyzer) Analyze(_ context.Context, _ engine.Request, archive []byte) engine.DynamicResult {
+	a.calls++
+	a.body = append([]byte(nil), archive...)
+	return a.result
+}
+
+type fakeStreamChecker struct {
+	result engine.ScanResult
+}
+
+func (s fakeStreamChecker) StreamCheck(_ engine.Request, _ io.Reader) engine.ScanResult {
+	return s.result
 }
 
 func TestHandlerBlockedRequestReturns403(t *testing.T) {
@@ -72,6 +94,107 @@ func TestHandlerPassedRequestForwards(t *testing.T) {
 	}
 	if rec.Body.String() != "upstream body" {
 		t.Errorf("expected body 'upstream body', got %s", rec.Body.String())
+	}
+}
+
+func TestDynamicAnalyzerPassReturnsArchive(t *testing.T) {
+	archive := []byte("fake archive")
+	analyzer := &fakeDynamicAnalyzer{}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/gzip")
+		w.WriteHeader(http.StatusOK)
+		w.Write(archive)
+	}))
+	defer upstream.Close()
+
+	upstreamURL, _ := url.Parse(upstream.URL)
+	handler := New(
+		&mockEngine{block: false},
+		map[string]RouteEntry{
+			"/npm/": {Upstream: upstreamURL, Ecosystem: "npm"},
+		},
+	)
+	handler.SetDynamicAnalyzer(analyzer, 1024)
+
+	req := httptest.NewRequest(http.MethodGet, "/npm/left-pad/-/left-pad-1.0.0.tgz", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), archive) {
+		t.Errorf("expected original archive body, got %q", rec.Body.String())
+	}
+	if analyzer.calls != 1 {
+		t.Errorf("expected analyzer called once, got %d", analyzer.calls)
+	}
+	if !bytes.Equal(analyzer.body, archive) {
+		t.Errorf("expected analyzer to receive archive body")
+	}
+}
+
+func TestDynamicAnalyzerBlockReturns403(t *testing.T) {
+	analyzer := &fakeDynamicAnalyzer{result: engine.DynamicResult{Block: true, Reason: "dynamic:network"}}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/gzip")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("fake archive"))
+	}))
+	defer upstream.Close()
+
+	upstreamURL, _ := url.Parse(upstream.URL)
+	handler := New(
+		&mockEngine{block: false},
+		map[string]RouteEntry{
+			"/npm/": {Upstream: upstreamURL, Ecosystem: "npm"},
+		},
+	)
+	handler.SetDynamicAnalyzer(analyzer, 1024)
+
+	req := httptest.NewRequest(http.MethodGet, "/npm/left-pad/-/left-pad-1.0.0.tgz", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
+	}
+	if rec.Body.String() != "dynamic:network" {
+		t.Errorf("expected dynamic reason, got %q", rec.Body.String())
+	}
+}
+
+func TestDynamicArchiveRunsStaticScanFirst(t *testing.T) {
+	analyzer := &fakeDynamicAnalyzer{}
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/gzip")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("fake archive"))
+	}))
+	defer upstream.Close()
+
+	upstreamURL, _ := url.Parse(upstream.URL)
+	handler := New(
+		&mockEngine{block: false},
+		map[string]RouteEntry{
+			"/npm/": {Upstream: upstreamURL, Ecosystem: "npm"},
+		},
+	)
+	handler.SetStreamChecker(fakeStreamChecker{result: engine.ScanResult{Block: true, Reason: "network"}})
+	handler.SetDynamicAnalyzer(analyzer, 1024)
+
+	req := httptest.NewRequest(http.MethodGet, "/npm/left-pad/-/left-pad-1.0.0.tgz", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403, got %d", rec.Code)
+	}
+	if rec.Body.String() != "network" {
+		t.Errorf("expected static scan reason, got %q", rec.Body.String())
+	}
+	if analyzer.calls != 0 {
+		t.Errorf("expected dynamic analyzer skipped after static block, got %d calls", analyzer.calls)
 	}
 }
 

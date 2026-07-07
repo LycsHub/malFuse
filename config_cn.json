@@ -44,5 +44,15 @@
       "enabled": true,
       "allow_private_ips": false
     }
+  },
+  "dynamic_scan": {
+    "enabled": false,
+    "runtime": "msb",
+    "timeout": "30s",
+    "max_total_size": 52428800,
+    "cache_enabled": true,
+    "network": "none",
+    "npm_image": "node:22-alpine",
+    "pypi_image": "python:3.12-alpine"
   }
 }

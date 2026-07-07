@@ -7,17 +7,18 @@ import (
 )
 
 type Config struct {
-	Port       string           `json:"port"`
-	Host       string           `json:"host"`
-	DBPath     string           `json:"db_path"`
-	PIDFile    string           `json:"pid_file"`
-	RepoProxy  string           `json:"repo_proxy"`
-	Logging    LoggingConfig    `json:"logging"`
-	Routing    []Route          `json:"routing"`
-	Cooldown   CooldownConfig   `json:"cooldown"`
-	Typo       TypoConfig       `json:"typo"`
-	OSV        OSVConfig        `json:"osv"`
-	ScriptScan ScriptScanConfig `json:"script_scan"`
+	Port        string            `json:"port"`
+	Host        string            `json:"host"`
+	DBPath      string            `json:"db_path"`
+	PIDFile     string            `json:"pid_file"`
+	RepoProxy   string            `json:"repo_proxy"`
+	Logging     LoggingConfig     `json:"logging"`
+	Routing     []Route           `json:"routing"`
+	Cooldown    CooldownConfig    `json:"cooldown"`
+	Typo        TypoConfig        `json:"typo"`
+	OSV         OSVConfig         `json:"osv"`
+	ScriptScan  ScriptScanConfig  `json:"script_scan"`
+	DynamicScan DynamicScanConfig `json:"dynamic_scan"`
 }
 
 type Route struct {
@@ -57,10 +58,10 @@ type TypoConfig struct {
 }
 
 type OSVConfig struct {
-	Enabled       bool          `json:"enabled"`
-	BlockOnVuln   bool          `json:"block_on_vuln"`
-	TTL           time.Duration `json:"ttl"`
-	BaseURL       string        `json:"base_url"`
+	Enabled     bool          `json:"enabled"`
+	BlockOnVuln bool          `json:"block_on_vuln"`
+	TTL         time.Duration `json:"ttl"`
+	BaseURL     string        `json:"base_url"`
 }
 
 func (o *OSVConfig) UnmarshalJSON(data []byte) error {
@@ -87,8 +88,8 @@ func (o *OSVConfig) UnmarshalJSON(data []byte) error {
 
 func Default() *Config {
 	return &Config{
-		Port:   "8080",
-		Host:   "127.0.0.1",
+		Port:    "8080",
+		Host:    "127.0.0.1",
 		DBPath:  "malfuse.db",
 		PIDFile: "malfuse.pid",
 		Logging: LoggingConfig{
@@ -99,6 +100,7 @@ func Default() *Config {
 		OSV: OSVConfig{
 			BaseURL: "https://api.osv.dev",
 		},
+		DynamicScan: defaultDynamicScanConfig(),
 	}
 }
 
@@ -107,10 +109,32 @@ func Load(data []byte) (*Config, error) {
 	if err := json.Unmarshal(data, cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config: %w", err)
 	}
+	cfg.applyDefaults()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+func (c *Config) applyDefaults() {
+	if c.DynamicScan.Runtime == "" {
+		c.DynamicScan.Runtime = "msb"
+	}
+	if c.DynamicScan.Timeout == 0 {
+		c.DynamicScan.Timeout = 30 * time.Second
+	}
+	if c.DynamicScan.MaxTotalSize == 0 {
+		c.DynamicScan.MaxTotalSize = 50 * 1024 * 1024
+	}
+	if c.DynamicScan.Network == "" {
+		c.DynamicScan.Network = "none"
+	}
+	if c.DynamicScan.NPMImage == "" {
+		c.DynamicScan.NPMImage = "node:22-alpine"
+	}
+	if c.DynamicScan.PyPIImage == "" {
+		c.DynamicScan.PyPIImage = "python:3.12-alpine"
+	}
 }
 
 func (c *Config) Validate() error {
@@ -146,14 +170,75 @@ type EntropyConfig struct {
 }
 
 type ObfuscationConfig struct {
-	Enabled          bool `json:"enabled"`
-	Base64MinLength  int  `json:"base64_min_length"`
-	HexMinLength     int  `json:"hex_min_length"`
+	Enabled         bool `json:"enabled"`
+	Base64MinLength int  `json:"base64_min_length"`
+	HexMinLength    int  `json:"hex_min_length"`
 }
 
 type NetworkConfig struct {
 	Enabled         bool `json:"enabled"`
 	AllowPrivateIPs bool `json:"allow_private_ips"`
+}
+
+type DynamicScanConfig struct {
+	Enabled      bool          `json:"enabled"`
+	Runtime      string        `json:"runtime"`
+	Timeout      time.Duration `json:"timeout"`
+	MaxTotalSize int64         `json:"max_total_size"`
+	CacheEnabled bool          `json:"cache_enabled"`
+	Network      string        `json:"network"`
+	NPMImage     string        `json:"npm_image"`
+	PyPIImage    string        `json:"pypi_image"`
+}
+
+func defaultDynamicScanConfig() DynamicScanConfig {
+	return DynamicScanConfig{
+		Runtime:      "msb",
+		Timeout:      30 * time.Second,
+		MaxTotalSize: 50 * 1024 * 1024,
+		CacheEnabled: true,
+		Network:      "none",
+		NPMImage:     "node:22-alpine",
+		PyPIImage:    "python:3.12-alpine",
+	}
+}
+
+func (d *DynamicScanConfig) UnmarshalJSON(data []byte) error {
+	type alias struct {
+		Enabled      bool   `json:"enabled"`
+		Runtime      string `json:"runtime"`
+		Timeout      string `json:"timeout"`
+		MaxTotalSize int64  `json:"max_total_size"`
+		CacheEnabled *bool  `json:"cache_enabled"`
+		Network      string `json:"network"`
+		NPMImage     string `json:"npm_image"`
+		PyPIImage    string `json:"pypi_image"`
+	}
+
+	defaults := defaultDynamicScanConfig()
+	a := alias{CacheEnabled: &defaults.CacheEnabled}
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+
+	d.Enabled = a.Enabled
+	d.Runtime = a.Runtime
+	d.MaxTotalSize = a.MaxTotalSize
+	if a.CacheEnabled != nil {
+		d.CacheEnabled = *a.CacheEnabled
+	}
+	d.Network = a.Network
+	d.NPMImage = a.NPMImage
+	d.PyPIImage = a.PyPIImage
+
+	if a.Timeout != "" {
+		timeout, err := time.ParseDuration(a.Timeout)
+		if err != nil {
+			return fmt.Errorf("invalid dynamic_scan timeout: %w", err)
+		}
+		d.Timeout = timeout
+	}
+	return nil
 }
 
 type LoggingConfig struct {

@@ -254,6 +254,16 @@ $ curl http://127.0.0.1:8080/health
     "entropy": { "enabled": true, "threshold": 4.5 },
     "obfuscation": { "enabled": true, "base64_min_length": 100, "hex_min_length": 20 },
     "network": { "enabled": true, "allow_private_ips": false }
+  },
+  "dynamic_scan": {
+    "enabled": false,
+    "runtime": "msb",
+    "timeout": "30s",
+    "max_total_size": 52428800,
+    "cache_enabled": true,
+    "network": "none",
+    "npm_image": "node:22-alpine",
+    "pypi_image": "python:3.12-alpine"
   }
 }
 ```
@@ -285,6 +295,13 @@ $ curl http://127.0.0.1:8080/health
 | `script_scan.obfuscation` | `base64_min_length` | Min base64 string length to trigger detection |
 | `script_scan.obfuscation` | `hex_min_length` | Min consecutive `\xNN` count to trigger detection |
 | `script_scan.network` | `allow_private_ips` | Whether to allow private IPs (`10.x`, `192.168.x`, etc.) |
+| `dynamic_scan` | `enabled` | Default off; when enabled, archives are synchronously analyzed before release |
+| `dynamic_scan` | `runtime` | microsandbox CLI binary (`msb`) |
+| `dynamic_scan` | `timeout` | Per-package sandbox execution timeout |
+| `dynamic_scan` | `max_total_size` | Max archive size buffered for dynamic analysis |
+| `dynamic_scan` | `cache_enabled` | Cache PASS/BLOCK by archive SHA256 |
+| `dynamic_scan` | `network` | `none` runs microsandbox with `--no-net` |
+| `dynamic_scan` | `npm_image` / `pypi_image` | OCI images used by microsandbox for npm/PyPI analysis |
 
 ---
 

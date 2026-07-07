@@ -248,6 +248,16 @@ $ curl http://127.0.0.1:8080/health
     "entropy": { "enabled": true, "threshold": 4.5 },
     "obfuscation": { "enabled": true, "base64_min_length": 100, "hex_min_length": 20 },
     "network": { "enabled": true, "allow_private_ips": false }
+  },
+  "dynamic_scan": {
+    "enabled": false,
+    "runtime": "msb",
+    "timeout": "30s",
+    "max_total_size": 52428800,
+    "cache_enabled": true,
+    "network": "none",
+    "npm_image": "node:22-alpine",
+    "pypi_image": "python:3.12-alpine"
   }
 }
 ```
@@ -279,6 +289,13 @@ $ curl http://127.0.0.1:8080/health
 | `script_scan.obfuscation` | `base64_min_length` | 触发检测的 base64 字符串最小长度 |
 | `script_scan.obfuscation` | `hex_min_length` | 触发检测的连续 `\xNN` 最小次数 |
 | `script_scan.network` | `allow_private_ips` | 是否放行内网 IP（如 `10.x`、`192.168.x`） |
+| `dynamic_scan` | `enabled` | 默认关闭；开启后 archive 会在放行前同步动态分析 |
+| `dynamic_scan` | `runtime` | microsandbox CLI 二进制（`msb`） |
+| `dynamic_scan` | `timeout` | 单包沙箱执行超时 |
+| `dynamic_scan` | `max_total_size` | 动态分析可缓冲的 archive 大小上限 |
+| `dynamic_scan` | `cache_enabled` | 按 archive SHA256 缓存 PASS/BLOCK |
+| `dynamic_scan` | `network` | `none` 表示使用 microsandbox `--no-net` 断网执行 |
+| `dynamic_scan` | `npm_image` / `pypi_image` | microsandbox 分析 npm/PyPI 时使用的 OCI 镜像 |
 
 ---
 

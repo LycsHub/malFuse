@@ -16,6 +16,7 @@ import (
 	"malFuse/internal/config"
 	"malFuse/internal/daemon"
 	"malFuse/internal/db/schema"
+	"malFuse/internal/dynamic"
 	"malFuse/internal/engine"
 	"malFuse/internal/linker"
 	"malFuse/internal/logger"
@@ -234,6 +235,18 @@ func runProxyWithConfig(cfg *config.Config) error {
 				AllowPrivateIPs:    cfg.ScriptScan.Network.AllowPrivateIPs,
 			},
 		})
+	}
+
+	if cfg.DynamicScan.Enabled {
+		handler.SetDynamicAnalyzer(dynamic.New(dynamic.Config{
+			Runtime:      cfg.DynamicScan.Runtime,
+			Timeout:      cfg.DynamicScan.Timeout,
+			MaxTotalSize: cfg.DynamicScan.MaxTotalSize,
+			CacheEnabled: cfg.DynamicScan.CacheEnabled,
+			Network:      cfg.DynamicScan.Network,
+			NPMImage:     cfg.DynamicScan.NPMImage,
+			PyPIImage:    cfg.DynamicScan.PyPIImage,
+		}), cfg.DynamicScan.MaxTotalSize)
 	}
 
 	addr := fmt.Sprintf("%s:%s", cfg.Host, cfg.Port)
